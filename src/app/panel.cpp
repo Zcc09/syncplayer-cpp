@@ -259,9 +259,62 @@ std::optional<double> Panel::parse_timecode(const std::wstring& text) const {
   }
 }
 
-std::wstring Panel::offset_label() const {
-  if (std::fabs(sync_off_) < 0.005) return L"Videos are aligned";
-  return fmt(L"Reaction runs %+.2fs against the movie", sync_off_);
+const std::wstring& Panel::offset_label() {
+  if (std::fabs(sync_off_ - cached_off_) > 1e-9) {
+    cached_off_ = sync_off_;
+    if (std::fabs(sync_off_) < 0.005)
+      offset_label_cache_ = L"Videos are aligned";
+    else
+      offset_label_cache_ = fmt(L"Reaction runs %+.2fs against the movie", sync_off_);
+  }
+  return offset_label_cache_;
+}
+
+const std::wstring& Panel::jump_back_label() {
+  // the label is a pure function of jump_text_, so while playing (where the field
+  // does not change) neither the stod parse nor the fmt runs again
+  if (jump_text_ != cached_jump_text_) {
+    cached_jump_text_ = jump_text_;
+    const double jump = jump_seconds();
+    back_label_cache_ = fmt(L"\u2190 %gs", jump);
+    fwd_label_cache_ = fmt(L"%gs \u2192", jump);
+  }
+  return back_label_cache_;
+}
+
+const std::wstring& Panel::jump_fwd_label() {
+  jump_back_label();
+  return fwd_label_cache_;
+}
+
+const std::wstring& Panel::time_label(unsigned row, double pos, double dur) {
+  // format_hms prints whole seconds, so the string only changes when the whole
+  // second changes; while playing the position moves every frame, and keying on
+  // the raw value would rebuild the string (and two widen() calls) every frame
+  const long lp = static_cast<long>(pos > 0.0 ? pos : 0.0);
+  const long ld = static_cast<long>(dur > 0.0 ? dur : 0.0);
+  if (lp != cached_time_a_[row * 2] || ld != cached_time_a_[row * 2 + 1]) {
+    cached_time_a_[row * 2] = lp;
+    cached_time_a_[row * 2 + 1] = ld;
+    time_a_cache_[row] = fmt(L"%s / %s", widen(format_hms(pos)).c_str(),
+                             widen(format_hms(dur)).c_str());
+  }
+  return time_a_cache_[row];
+}
+
+const std::wstring& Panel::vol_label(unsigned i) {
+  const wchar_t* names[3] = {L"Movie", L"Reaction", L"Master"};
+  const double* values[3] = {&vol_a_, &vol_b_, &vol_m_};
+  const double v = *values[i];
+  if (v != cached_vol_[i]) {
+    cached_vol_[i] = v;
+    vol_label_cache_[i] = fmt(L"%s  %.0f%%", names[i], v);
+  }
+  return vol_label_cache_[i];
+}
+
+void Panel::set_sync_off(double off) {
+  sync_off_ = off;
 }
 
 // ---------------------------------------------------------------------------
@@ -620,20 +673,22 @@ void Panel::draw_title_bar() {
                       dark_ ? ui::Color{0, 0, 0, 0.18f} : ui::Color{0, 0, 0, 0.03f});
   renderer_.text(L"SyncPlayer", {ui::kPad, 0, 200, kTitleBarH}, t.text, 14.0f,
                  ui::TextAlign::Left, ui::TextWeight::SemiBold);
-  const std::wstring chip = L"2.0.0";
-  const float chip_w = renderer_.measure(chip, 12.0f) + 20.0f;
-  const ui::RectF chip_rect{ui::kPad + 96.0f, 12.0f, chip_w, 16.0f};
+  // "2.0.0" never changes, so the measure is paid for once, not every frame
+  if (chip_w_ == 0.0f) chip_w_ = renderer_.measure(chip_label_, 12.0f) + 20.0f;
+  const ui::RectF chip_rect{ui::kPad + 96.0f, 12.0f, chip_w_, 16.0f};
   renderer_.fill_rounded(chip_rect, 8.0f, t.control);
-  renderer_.text(chip, chip_rect, t.text_secondary, 12.0f, ui::TextAlign::Center);
+  renderer_.text(chip_label_, chip_rect, t.text_secondary, 12.0f,
+                 ui::TextAlign::Center);
 
   // A settings button, in the column arrangement only: with tabs on, the Settings tab is
   // already there.
   if (!tabs_mode_) {
     const float bw = 96.0f;
     btn_settings_ = {btn_min_.x - bw - 8.0f, 8.0f, bw, 24.0f};
-    const std::wstring label = settings_page_ ? L"Back" : L"Settings";
     // Standard, not Subtle: a borderless button in the title bar is hard to find.
-    if (ui_.button(ID_SETTINGS, btn_settings_, label, ui::ButtonStyle::Standard)) {
+    if (ui_.button(ID_SETTINGS, btn_settings_,
+                   settings_page_ ? L"Back" : L"Settings",
+                   ui::ButtonStyle::Standard)) {
       settings_page_ = !settings_page_;
       scroll_ = 0.0f;
       layout(width_ / (scale_dpi_ * scale_), height_ / (scale_dpi_ * scale_));
@@ -794,11 +849,11 @@ void Panel::draw_sync_tab() {
                  started_)) {
     toggle_play();
   }
-  if (ui_.button(ID_BACK, btn_back_, fmt(L"\u2190 %gs", jump_seconds()),
+  if (ui_.button(ID_BACK, btn_back_, jump_back_label(),
                  ui::ButtonStyle::Standard, started_)) {
     nudge_jump(-1);
   }
-  if (ui_.button(ID_FWD, btn_fwd_, fmt(L"%gs \u2192", jump_seconds()),
+  if (ui_.button(ID_FWD, btn_fwd_, jump_fwd_label(),
                  ui::ButtonStyle::Standard, started_)) {
     nudge_jump(+1);
   }
@@ -835,8 +890,7 @@ void Panel::draw_sync_tab() {
                    ui::TextAlign::Left, ui::TextWeight::SemiBold);
     const ui::SeekDrag drag = ui_.seek_bar(id, tl_[i].bar, pos.value_or(0),
                                            dur.value_or(0), have && dur.value_or(0) > 0);
-    renderer_.text(fmt(L"%s / %s", widen(format_hms(pos.value_or(0))).c_str(),
-                       widen(format_hms(dur.value_or(0))).c_str()),
+    renderer_.text(time_label(i, pos.value_or(0), dur.value_or(0)),
                    tl_[i].time, t.text_secondary, 12.0f, ui::TextAlign::Right);
     scrubbing_ = drag.result == ui::SeekResult::Dragging;
     if (drag.result == ui::SeekResult::Clicked) {
@@ -857,8 +911,7 @@ void Panel::draw_sync_tab() {
                  ui::TextAlign::Left, ui::TextWeight::SemiBold);
   const ui::SeekDrag master = ui_.seek_bar(ID_BAR_MASTER, tl_[2].bar, pos_a.value_or(0),
                                            dur_a.value_or(0), have && locked_);
-  renderer_.text(fmt(L"%s / %s", widen(format_hms(pos_a.value_or(0))).c_str(),
-                     widen(format_hms(dur_a.value_or(0))).c_str()),
+  renderer_.text(time_label(2, pos_a.value_or(0), dur_a.value_or(0)),
                  tl_[2].time, t.text_secondary, 12.0f, ui::TextAlign::Right);
   if (master.result == ui::SeekResult::Clicked) {
     last_scrub_pos_ = master.clicked_seconds;
@@ -917,13 +970,11 @@ void Panel::draw_windows_tab() {
                  t.text_secondary, 12.0f);
 
   ui_.card(card_volume_, L"VOLUME");
-  const wchar_t* vnames[3] = {L"Movie", L"Reaction", L"Master"};
   double* values[3] = {&vol_a_, &vol_b_, &vol_m_};
   const unsigned ids[3] = {ID_VOL_A, ID_VOL_B, ID_VOL_M};
   bool changed = false;
   for (int i = 0; i < 3; ++i) {
-    renderer_.text(fmt(L"%s  %.0f%%", vnames[i], *values[i]), vol_label_[i],
-                   t.text_secondary, 13.0f);
+    renderer_.text(vol_label(i), vol_label_[i], t.text_secondary, 13.0f);
     changed |= ui_.slider(ids[i], vol_slider_[i], *values[i], 0, kVolumeMax);
   }
   if (changed) apply_volume();
@@ -978,14 +1029,22 @@ void Panel::draw_settings_tab() {
   if (card_about_.h <= 0.0f) return;
   ui_.card(card_about_, L"ABOUT");
   float ay = card_about_.y + kCardTop + kCardTitleH + 8.0f;
-  const auto mpv = find_mpv();
+  // the About card is drawn by every playing frame in the column, but its values are
+  // fixed for the life of the process, so probe for mpv and widen() only once
+  static const std::wstring kVersionLine = L"2.0.0 (C++ build)";
+  if (!about_mpv_valid_) {
+    about_mpv_valid_ = true;
+    const auto mpv = find_mpv();
+    about_mpv_cache_ = mpv ? widen(to_utf8(*mpv)) : std::wstring(L"not found");
+    about_cfg_cache_ = widen(to_utf8(config_dir() / "syncplayer_config.json"));
+  }
   const struct {
     const wchar_t* label;
-    std::wstring value;
+    const std::wstring& value;
   } lines[] = {
-      {L"Version", L"2.0.0 (C++ build)"},
-      {L"mpv", mpv ? widen(to_utf8(*mpv)) : std::wstring(L"not found")},
-      {L"Config", widen(to_utf8(config_dir() / "syncplayer_config.json"))},
+      {L"Version", kVersionLine},
+      {L"mpv", about_mpv_cache_},
+      {L"Config", about_cfg_cache_},
   };
   for (const auto& line : lines) {
     renderer_.text(line.label, {card_about_.x + ui::kPad, ay, 80.0f, 20.0f},
@@ -1008,16 +1067,20 @@ void Panel::draw_status() {
   renderer_.fill_rounded(status_strip_, ui::kRadiusCard, t.layer);
   renderer_.stroke_rounded(status_strip_, ui::kRadiusCard, t.border, 1.0f);
 
-  const std::wstring readout =
-      cfg_.show_readout ? (status_text_.empty() ? L"Idle. Press Start on the Sources tab."
-                                                : status_text_)
-                        : L"Readout hidden (Settings).";
+  // drawn by reference: while playing status_text_ is non-empty every frame, so
+  // the old local copy re-allocated the whole readout string on every frame
+  static const std::wstring kReadoutIdle = L"Idle. Press Start on the Sources tab.";
+  static const std::wstring kReadoutHidden = L"Readout hidden (Settings).";
+  const std::wstring& readout =
+      cfg_.show_readout ? (status_text_.empty() ? kReadoutIdle : status_text_)
+                        : kReadoutHidden;
   renderer_.text(readout,
                  {status_strip_.x + 12.0f, status_strip_.y + 2.0f, status_strip_.w - 24.0f,
                   20.0f},
                  t.text, 13.0f);
   const bool show_message = now_seconds() < message_until_ && !message_text_.empty();
-  renderer_.text(show_message ? message_text_ : L"",
+  // L"" used to build a throwaway string every frame; empty_text_ holds it once
+  renderer_.text(show_message ? message_text_ : empty_text_,
                  {status_strip_.x + 12.0f, status_strip_.y + 21.0f, status_strip_.w - 24.0f,
                   18.0f},
                  t.text_secondary, 12.0f);

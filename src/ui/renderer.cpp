@@ -43,8 +43,10 @@ bool Renderer::init(HWND hwnd) {
       D2D1_RENDER_TARGET_USAGE_NONE, D2D1_FEATURE_LEVEL_DEFAULT);
   const D2D1_HWND_RENDER_TARGET_PROPERTIES hwnd_props =
       D2D1::HwndRenderTargetProperties(hwnd, size, D2D1_PRESENT_OPTIONS_IMMEDIATELY);
-  return SUCCEEDED(factory_->CreateHwndRenderTarget(props, hwnd_props,
-                                                    target_.GetAddressOf()));
+  if (!SUCCEEDED(factory_->CreateHwndRenderTarget(props, hwnd_props,
+                                                  target_.GetAddressOf())))
+    return false;
+  return true;
 }
 
 void Renderer::shutdown() {
@@ -58,6 +60,10 @@ void Renderer::shutdown() {
 void Renderer::release_device_objects() {
   brushes_.clear();
   formats_.clear();
+  grad_stops_.Reset();
+  grad_brush_.Reset();
+  grad_key_ = 0;
+  grad_dw_ = grad_dh_ = -1.0f;
 }
 
 void Renderer::resize(UINT width, UINT height, float dpi) {
@@ -138,24 +144,34 @@ void Renderer::stroke_rounded(const RectF& r, float radius, Color c, float width
 
 void Renderer::fill_gradient_v(const RectF& r, Color top, Color bottom) {
   if (!target_ || r.w <= 0 || r.h <= 0) return;
-  D2D1_GRADIENT_STOP stops[2] = {};
-  stops[0].position = 0.0f;
-  stops[0].color = to_d2d(top);
-  stops[1].position = 1.0f;
-  stops[1].color = to_d2d(bottom);
-  Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> collection;
-  if (FAILED(target_->CreateGradientStopCollection(stops, 2, collection.GetAddressOf()))) {
-    fill_rect(r, top);
-    return;
+  const uint64_t key = (static_cast<uint64_t>(color_key(top)) << 32) | color_key(bottom);
+  if (key != grad_key_) {
+    D2D1_GRADIENT_STOP stops[2] = {};
+    stops[0].position = 0.0f;
+    stops[0].color = to_d2d(top);
+    stops[1].position = 1.0f;
+    stops[1].color = to_d2d(bottom);
+    grad_stops_.Reset();
+    if (FAILED(target_->CreateGradientStopCollection(stops, 2, grad_stops_.GetAddressOf()))) {
+      fill_rect(r, top);
+      return;
+    }
+    grad_key_ = key;
+    grad_brush_.Reset();
   }
-  Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> brush;
-  const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props =
-      D2D1::LinearGradientBrushProperties(D2D1::Point2F(r.x, r.y),
-                                          D2D1::Point2F(r.x, r.y + r.h));
-  if (SUCCEEDED(target_->CreateLinearGradientBrush(props, collection.Get(),
-                                                   brush.GetAddressOf()))) {
-    target_->FillRectangle(r.d2d(), brush.Get());
+  if (!grad_brush_ || r.w != grad_dw_ || r.h != grad_dh_) {
+    // the brush carries the gradient's start/end geometry, so it is rebuilt when
+    // the colours or the window size change and reused otherwise
+    const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props =
+        D2D1::LinearGradientBrushProperties(D2D1::Point2F(r.x, r.y),
+                                            D2D1::Point2F(r.x, r.y + r.h));
+    if (!SUCCEEDED(target_->CreateLinearGradientBrush(props, grad_stops_.Get(),
+                                                     grad_brush_.GetAddressOf())))
+      return;
+    grad_dw_ = r.w;
+    grad_dh_ = r.h;
   }
+  target_->FillRectangle(r.d2d(), grad_brush_.Get());
 }
 
 void Renderer::fill_circle(float cx, float cy, float radius, Color c) {
@@ -214,10 +230,10 @@ void Renderer::text(const std::wstring& s, const RectF& r, Color c, float size,
   IDWriteTextFormat* format = format_for(size, align, weight);
   if (!format) return;
   // leave room for the glyphs to sit inside the box rather than clip
-  const RectF box{r.x, r.y, std::max(r.w, 1.0f), std::max(r.h, 1.0f)};
+  const D2D1_RECT_F box{r.x, r.y, r.x + std::max(r.w, 1.0f), r.y + std::max(r.h, 1.0f)};
   D2D1_DRAW_TEXT_OPTIONS opts = D2D1_DRAW_TEXT_OPTIONS_CLIP;
   if (!ellipsis) opts = D2D1_DRAW_TEXT_OPTIONS_NONE;
-  target_->DrawTextW(s.c_str(), static_cast<UINT32>(s.size()), format, box.d2d(),
+  target_->DrawTextW(s.c_str(), static_cast<UINT32>(s.size()), format, box,
                      brush_for(c).Get(), opts, DWRITE_MEASURING_MODE_NATURAL);
 }
 

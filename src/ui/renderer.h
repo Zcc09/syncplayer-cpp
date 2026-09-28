@@ -83,6 +83,13 @@ class Renderer {
   Microsoft::WRL::ComPtr<ID2D1Factory> factory_;
   Microsoft::WRL::ComPtr<IDWriteFactory> dwrite_;
   Microsoft::WRL::ComPtr<ID2D1HwndRenderTarget> target_;
+  // the panel draws one background gradient per frame with fixed colours, so the
+  // stop collection and the gradient brush are kept until the colours or the
+  // window size change
+  uint64_t grad_key_ = 0;
+  float grad_dw_ = -1.0f, grad_dh_ = -1.0f;
+  Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> grad_stops_;
+  Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> grad_brush_;
 
   // brushes are cached per colour; a frame uses a couple of dozen distinct ones
   std::map<uint32_t, Microsoft::WRL::ComPtr<ID2D1SolidColorBrush>> brushes_;

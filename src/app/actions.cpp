@@ -102,7 +102,7 @@ void Panel::start_sources() {
 
   // the remembered alignment for this exact pair, applied before anything plays
   if (auto remembered = cfg_.alignments.find(narrow(src_a_text_), narrow(src_b_text_))) {
-    sync_off_ = *remembered;
+    set_sync_off(*remembered);
     offset_text_ = fmt(L"%+.2f", sync_off_);
     set_message(fmt(L"Remembered alignment applied: %s.", offset_label().c_str()));
   } else {

@@ -100,7 +100,14 @@ class Panel {
   void set_dark(bool dark);
   double jump_seconds() const;
   std::optional<double> parse_timecode(const std::wstring& text) const;
-  std::wstring offset_label() const;
+  // Formatted once per change of the value behind it, so a playing frame draws
+  // from the cached string instead of rebuilding it with fmt/widen.
+  const std::wstring& offset_label();
+  const std::wstring& jump_back_label();
+  const std::wstring& jump_fwd_label();
+  const std::wstring& time_label(unsigned row, double pos, double dur);
+  const std::wstring& vol_label(unsigned i);
+  void set_sync_off(double off);
 
   // ---- layout (one function per tab; each fills the content rect it is given) ---
   void layout(float w, float h);
@@ -194,6 +201,25 @@ class Panel {
   std::wstring jump_text_, speed_text_, offset_text_, goto_text_;
   std::wstring status_text_, message_text_;
   double message_until_ = 0.0;
+
+  // Cached label strings: rebuilt only when the value behind them changes, so a
+  // playing frame draws from these instead of allocating fresh fmt/widen results.
+  double cached_off_ = -1e300;
+  std::wstring cached_jump_text_;
+  std::wstring offset_label_cache_;
+  std::wstring back_label_cache_, fwd_label_cache_;
+  std::wstring vol_label_cache_[3];
+  double cached_vol_[3] = {-1e300, -1e300, -1e300};
+  double cached_time_a_[6] = {-1e300, -1e300, -1e300, -1e300, -1e300, -1e300};
+  std::wstring time_a_cache_[3];
+  // the About card shows the mpv path and the config dir, which do not change while
+  // the panel is alive, so they are widened once and reused by every frame
+  std::wstring about_mpv_cache_;
+  bool about_mpv_valid_ = false;
+  std::wstring about_cfg_cache_;
+  std::wstring empty_text_ = L"";
+  std::wstring chip_label_ = L"2.0.0";
+  float chip_w_ = 0.0f;
 
   float width_ = 880.0f, height_ = 780.0f;
   float dpi_ = 96.0f;
