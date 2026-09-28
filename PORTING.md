@@ -49,7 +49,7 @@ The core is deliberately UI-free so the Linux port can reuse it: only `platform/
 
 ## What is ported and verified
 
-Verified by `cpp/build/sp_smoke.exe` (see `tests/smoke.cpp`), which starts real mpv
+Verified by `build/sp_smoke.exe` (see `tests/smoke.cpp`), which starts real mpv
 processes rather than mocking them:
 
 - mpv, yt-dlp and ffmpeg discovery, in the same order as the Python build, with the

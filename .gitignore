@@ -1,0 +1,15 @@
+# build output
+build/
+out/
+.vs/
+
+# compiler output
+*.obj
+*.pdb
+*.ilk
+*.exe
+
+# editor and OS noise
+.vscode/
+*.user
+Thumbs.db

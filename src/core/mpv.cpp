@@ -11,7 +11,7 @@
 
 namespace sp {
 
-// Generated from the Python source (see cpp/tools/embed_assets.py) so the beacon and
+// Generated from the Python source (see tools/embed_assets.py) so the beacon and
 // the key bindings are the same ones the Python build drives mpv with.
 extern const char* const kLuaBeaconSource;
 extern const char* const kInputConfSource;

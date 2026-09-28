@@ -1,5 +1,5 @@
 // The sync policy, ported from the Python implementation rather than re-derived.
-// cpp/PORTING-REFERENCE.md carries the original source for every function here.
+// PORTING-REFERENCE.md carries the original source for every function here.
 #pragma once
 
 #include <cstdint>

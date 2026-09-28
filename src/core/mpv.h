@@ -146,7 +146,7 @@ class MpvProcess {
 };
 
 // Writes the Lua beacon and the input.conf the app drives mpv with, and returns their
-// paths. Content comes from cpp/assets, which was extracted from the Python source so
+// paths. Content comes from assets, which was extracted from the Python source so
 // the behaviour is identical.
 struct MpvAssets {
   std::string lua_path;
