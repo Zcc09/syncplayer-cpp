@@ -11,6 +11,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
   add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /EHsc /MP)
   add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+
+  # The static C runtime means the executable carries its own runtime instead of needing
+  # the Visual C++ redistributable installed alongside it, which matters for a program
+  # that ships as a single Setup.exe. Function-level linking plus whole-program
+  # optimisation then trims what that pulls in.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+  add_compile_options(/Gy)
+  add_link_options(/OPT:REF /OPT:ICF)
 endif()
 
 option(SP_BUILD_TESTS "Build the smoke tests" ON)
@@ -66,4 +76,14 @@ if(SP_BUILD_TESTS)
   target_link_libraries(sp_smoke PRIVATE sp_core)
   enable_testing()
   add_test(NAME smoke COMMAND sp_smoke)
+endif()
+
+# Whole-program optimisation and function-level linking shave the binary; the static C
+# runtime means the executable has no Visual C++ redistributable to install alongside it.
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+  add_compile_options(/Gy)
+  add_link_options(/OPT:REF /OPT:ICF)
 endif()

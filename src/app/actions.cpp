@@ -47,6 +47,8 @@ bool looks_like_url(const std::wstring& s) {
   return s.rfind(L"http://", 0) == 0 || s.rfind(L"https://", 0) == 0;
 }
 
+constexpr UINT_PTR kSyncTimerId = 1;
+
 }  // namespace
 
 void Panel::start_sources() {
@@ -94,6 +96,9 @@ void Panel::start_sources() {
 
   started_ = true;
   playing_ = false;
+  dirty_ = true;
+  update_timer();
+  last_paint_pos_ = -1.0;
 
   // the remembered alignment for this exact pair, applied before anything plays
   if (auto remembered = cfg_.alignments.find(narrow(src_a_text_), narrow(src_b_text_))) {
@@ -131,6 +136,9 @@ void Panel::stop_players() {
   reaction_.stop();
   started_ = false;
   playing_ = false;
+  dirty_ = true;
+  update_timer();
+  last_paint_pos_ = -1.0;
   applied_rate_ = 1.0;
   hwnd_movie_.reset();
   hwnd_reaction_.reset();
@@ -139,6 +147,8 @@ void Panel::stop_players() {
 void Panel::toggle_play() {
   if (!started_) return;
   playing_ = !playing_;
+  dirty_ = true;
+  update_timer();
   movie_.play_pause(!playing_);
   reaction_.play_pause(!playing_);
   if (!playing_) applied_rate_ = 1.0;
@@ -267,7 +277,41 @@ void Panel::browse_for(Side side) {
 // ---------------------------------------------------------------------------
 // the sync loop: 33 ms, the same cadence as the Python app
 // ---------------------------------------------------------------------------
-void Panel::tick() { sync_tick(); }
+void Panel::update_timer() {
+  const int want = tick_interval_ms();
+  if (want == applied_timer_ms_) return;
+  applied_timer_ms_ = want;
+  if (want > 0) SetTimer(hwnd_, kSyncTimerId, static_cast<UINT>(want), nullptr);
+  else KillTimer(hwnd_, kSyncTimerId);
+}
+
+void Panel::tick() {
+  sync_tick();
+
+  // A frame is worth drawing only when what is on screen would change. While playing that
+  // is the timeline and the readout, a handful of times a second; a seek while paused
+  // changes the position immediately, and the rest of the time nothing does.
+  const double pos = movie_.position().value_or(-1.0);
+  if (pos >= 0.0) {
+    const double granularity = playing_ ? kPlayingRepaintSecs : 0.0005;
+    if (last_paint_pos_ < 0.0 || std::fabs(pos - last_paint_pos_) >= granularity) {
+      last_paint_pos_ = pos;
+      dirty_ = true;
+    }
+  }
+
+  if (playing_ != last_playing_) {
+    last_playing_ = playing_;
+    dirty_ = true;
+  }
+
+  const double now = static_cast<double>(GetTickCount64()) / 1000.0;
+  const bool showing = now < message_until_ && !message_text_.empty();
+  if (showing != last_message_shown_) {
+    last_message_shown_ = showing;
+    dirty_ = true;
+  }
+}
 
 void Panel::sync_tick() {
   if (!started_) return;

@@ -21,7 +21,6 @@ using sp::app::debug_on;
 
 constexpr wchar_t kClassName[] = L"SyncPlayerMainWindow";
 constexpr UINT_PTR kSyncTimer = 1;
-constexpr UINT kSyncIntervalMs = 33;
 
 // DWM attributes that are not in every SDK header yet
 constexpr DWORD kDwmUseImmersiveDarkMode = 20;
@@ -111,6 +110,9 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SIZE:
       if (g_panel) {
         g_panel->on_resize(static_cast<float>(LOWORD(lp)), static_cast<float>(HIWORD(lp)));
+        // A resize changes what the panel shows, and with on-demand repainting nothing
+        // else would ask for the new frame.
+        InvalidateRect(hwnd, nullptr, FALSE);
       }
       return 0;
 
@@ -124,6 +126,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                               min_height_for(hwnd));
       SetWindowPos(hwnd, nullptr, suggested->left, suggested->top, sw, sh,
                    SWP_NOZORDER | SWP_NOACTIVATE);
+      InvalidateRect(hwnd, nullptr, FALSE);
       return 0;
     }
 
@@ -133,6 +136,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       if (g_panel) {
         g_panel->on_input(g_input);
         g_panel->draw();
+        dbg("paint");
       }
       EndPaint(hwnd, &ps);
       g_input.clear_transient();  // typing and clicks belong to exactly one frame
@@ -240,7 +244,9 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_TIMER:
       if (wp == kSyncTimer && g_panel) {
         g_panel->tick();
-        InvalidateRect(hwnd, nullptr, FALSE);
+        // Only ask for a frame when something changed. Repainting on every tick kept a
+        // window that was doing nothing at a couple of percent of a core.
+        if (g_panel->wants_repaint()) InvalidateRect(hwnd, nullptr, FALSE);
       }
       return 0;
 
@@ -285,8 +291,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 
   sp::Config cfg = sp::Config::load();
   int x = cfg.window.x, y = cfg.window.y;
-  int w = cfg.window.valid() ? cfg.window.w : 880;
-  int h = cfg.window.valid() ? cfg.window.h : 780;
+  // The config is in logical pixels; scale it to this display's DPI.
+  const UINT dpi = GetDpiForSystem();
+  const float dpi_scale = (dpi ? static_cast<float>(dpi) : 96.0f) / 96.0f;
+  int w = cfg.window.valid() ? static_cast<int>(cfg.window.w * dpi_scale) : 880;
+  int h = cfg.window.valid() ? static_cast<int>(cfg.window.h * dpi_scale) : 780;
   if (!cfg.window.valid()) {
     const int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
     x = (sw - w) / 2;
@@ -324,7 +333,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 
   ShowWindow(hwnd, SW_SHOW);
   UpdateWindow(hwnd);
-  SetTimer(hwnd, kSyncTimer, kSyncIntervalMs, nullptr);
+  // No timer at startup: nothing is loaded, so there is nothing to watch. The panel arms
+  // it when videos are loaded and drops it again when they are not.
 
   MSG msg{};
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {

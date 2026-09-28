@@ -173,6 +173,10 @@ void MpvIpc::close() {
 
 void MpvIpc::reader_loop() {
 #ifdef _WIN32
+  // This thread only moves bytes; the decode threads in mpv should get the CPU.
+  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#endif
+#ifdef _WIN32
   char buf[4096];
   while (!impl_->stop) {
     DWORD got = 0;
@@ -346,6 +350,11 @@ bool MpvProcess::start(const fs::path& mpv_exe, const MpvOptions& opts,
     add("--network-timeout=30");
     add("--stream-buffer-size=2MiB");
   }
+#ifdef _WIN32
+  // Skip the Vulkan and OpenGL probes: this is a Windows build and D3D11 is what the
+  // bundled mpv will use anyway.
+  add("--gpu-api=d3d11");
+#endif
   add("--force-window=yes");
   add("--title=" + opts_.title);
   if (opts_.start_paused) add("--pause=yes");
@@ -425,6 +434,9 @@ void MpvProcess::stop() {
 bool MpvProcess::running() const { return running_.load(); }
 
 void MpvProcess::stdout_loop() {
+#ifdef _WIN32
+  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#endif
 #ifdef _WIN32
   char buf[4096];
   std::string acc;
@@ -607,8 +619,12 @@ MpvAssets write_mpv_assets() {
   MpvAssets out;
   const fs::path lua = shot_dir() / "syncplayer_events.lua";
   const fs::path conf = shot_dir() / "input.conf";
-  write_text_file(lua, kLuaBeaconSource);
-  write_text_file(conf, kInputConfSource);
+  // Write only on a change: this runs on every Start, and rewriting two files that are
+  // almost always identical is wasted disk work.
+  const std::string want_lua = kLuaBeaconSource;
+  const std::string want_conf = kInputConfSource;
+  if (read_text_file(lua) != want_lua) write_text_file(lua, want_lua);
+  if (read_text_file(conf) != want_conf) write_text_file(conf, want_conf);
   out.lua_path = to_utf8(lua);
   out.input_conf_path = to_utf8(conf);
   return out;

@@ -46,6 +46,7 @@ std::wstring fmt(const wchar_t* pattern, ...) {
 
 double now_seconds() { return static_cast<double>(GetTickCount64()) / 1000.0; }
 
+
 // Fluent metrics, shared by every tab
 constexpr float kTitleBarH = 40.0f;
 constexpr float kTabStripH = 46.0f;
@@ -136,7 +137,11 @@ void Panel::shutdown() {
 }
 
 void Panel::remember_window(int x, int y, int w, int h) {
-  cfg_.window = WindowRect{x, y, w, h};
+  // Stored in logical pixels: the Python build writes and reads the same file and is
+  // DPI-unaware, so a physical size would come back as a window 150% too large on a
+  // 150% display.
+  const float s = (scale_dpi_ > 0.0f) ? scale_dpi_ : 1.0f;
+  cfg_.window = WindowRect{x, y, static_cast<int>(w / s), static_cast<int>(h / s)};
 }
 
 bool Panel::editing_text() const {
@@ -158,30 +163,39 @@ void Panel::on_resize(float w, float h) {
   width_ = w;
   height_ = h;
   renderer_.resize(static_cast<UINT>(w), static_cast<UINT>(h), dpi_);
+  {
+    const UINT sys_dpi = GetDpiForWindow(hwnd_);
+    scale_dpi_ = (sys_dpi ? static_cast<float>(sys_dpi) : 96.0f) / 96.0f;
+  }
   // Each tab lays itself out to fill the window; the scale is only a safety net for a
   // window smaller than the minimum size.
   scale_ = std::min(1.0f, std::min(w / kMinWidth, h / kMinHeight));
   renderer_.set_scale(scale_);
   layout(w / scale_, h / scale_);
+  dirty_ = true;  // the new layout needs drawing
 }
 
 void Panel::on_dpi(float dpi) {
   dpi_ = dpi;
+  scale_dpi_ = (dpi > 0.0f) ? dpi / 96.0f : 1.0f;
   renderer_.resize(static_cast<UINT>(width_), static_cast<UINT>(height_), dpi);
   scale_ = std::min(1.0f, std::min(width_ / kMinWidth, height_ / kMinHeight));
   renderer_.set_scale(scale_);
   layout(width_ / scale_, height_ / scale_);
+  dirty_ = true;
 }
 
 void Panel::select_tab(int index) {
   if (index < 0 || index >= kTabCount) return;
   tab_ = static_cast<Tab>(index);
-  layout(width_ / scale_, height_ / scale_);  // the new tab lays itself out
+  layout(width_ / scale_, height_ / scale_);
+  dirty_ = true;  // the new tab lays itself out
 }
 
 void Panel::set_message(const std::wstring& text) {
   message_text_ = text;
   message_until_ = now_seconds() + 8.0;
+  dirty_ = true;
 }
 
 double Panel::jump_seconds() const {
@@ -390,6 +404,7 @@ void Panel::draw() {
       if (cw > 1.0f && ch > 1.0f &&
           (std::fabs(cw - width_) > 0.5f || std::fabs(ch - height_) > 0.5f)) {
         on_resize(cw, ch);
+        dirty_ = true;
       }
     }
   }
@@ -423,6 +438,8 @@ void Panel::draw() {
 
   renderer_.end();
   ui_.end_frame();
+
+  dirty_ = false;  // until something changes again
 }
 
 void Panel::draw_title_bar() {

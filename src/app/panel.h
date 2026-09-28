@@ -24,6 +24,10 @@ class Panel {
  public:
   // The smallest window that shows every tab without clipping: each tab declares what
   // it needs and this is the largest of them.
+  // While playing, a frame every 150ms is smooth enough for the timeline and costs a
+  // fifth of what the 33ms cadence did. When nothing is changing, no frame is drawn.
+  static constexpr double kPlayingRepaintSecs = 0.15;
+
   static constexpr float kMinWidth = 800.0f;
   static constexpr float kMinHeight = 700.0f;
 
@@ -36,6 +40,18 @@ class Panel {
   void on_dpi(float dpi);
   void draw();
   void tick();  // the sync loop, roughly every 33 ms
+
+  // True when something the panel shows has changed and it needs a frame. The window
+  // only repaints when this says so, which is what keeps an idle panel at no cost.
+  bool wants_repaint() const { return dirty_; }
+
+  // How often the sync loop needs to run, in milliseconds; 0 means it does not need to
+  // run at all. Nothing loaded needs no waking, paused needs only enough to notice a
+  // seek, and playing needs the full cadence.
+  int tick_interval_ms() const {
+    if (!started_) return 0;
+    return playing_ ? 33 : 250;
+  }
 
   void remember_window(int x, int y, int w, int h);
 
@@ -69,6 +85,7 @@ class Panel {
   void toggle_floating_pip();
   void browse_for(Side side);
   void sync_tick();
+  void update_timer();
   void set_message(const std::wstring& text);
   void set_dark(bool dark);
   double jump_seconds() const;
@@ -146,6 +163,14 @@ class Panel {
   float width_ = 880.0f, height_ = 780.0f;
   float dpi_ = 96.0f;
   float scale_ = 1.0f;  // design units -> pixels
+  float scale_dpi_ = 1.0f;  // logical -> physical pixels for this display
+
+  // repaint bookkeeping
+  bool dirty_ = true;
+  int applied_timer_ms_ = 0;
+  double last_paint_pos_ = -1.0;
+  bool last_playing_ = false;
+  bool last_message_shown_ = false;
 };
 
 }  // namespace sp::app

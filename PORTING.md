@@ -156,3 +156,49 @@ click into the running app from the test harness did not work (posted messages r
 the window as mouse moves but the button messages did not land), so clicking is unproven
 and was not exercised. The Ctrl+1..4 and Ctrl+Tab shortcuts are implemented on the same
 path and are likewise unverified.
+
+## Optimisation
+
+Measured, on the machine this was written on (800x700 logical, 150% display scaling):
+
+| Change | Before | After |
+| --- | --- | --- |
+| Frames drawn while idle | ~300 in 10s | 2-3 in 10s |
+| Idle CPU | 2.7-4.1% of a core | 0.00% (median of three runs) |
+| Executable | 845,312 bytes | 498,688 bytes |
+| Visual C++ runtime imports | MSVCP140, VCRUNTIME140, VCRUNTIME140_1 | none |
+
+What was done, and why:
+
+- **Draw only when something changes.** The window repainted thirty times a second forever,
+  including while sitting idle with nothing loaded. A panel now decides: no frame at all
+  unless something it shows moved, roughly seven frames a second while playing for the
+  timeline and the readout, and one frame on demand for input, a resize, or a seek. An
+  idle window costs nothing.
+- **Let the sync timer follow the state.** It ran at 33ms unconditionally, which wakes the
+  process thirty times a second for no reason and keeps a CPU out of its low-power states.
+  There is no timer at all until videos are loaded, a slow poll while they are paused, and
+  the full cadence while playing.
+- **Ship without the Visual C++ redistributable.** The static C runtime, whole-program
+  optimisation and function-level linking cut the executable by 41% and removed every
+  runtime DLL import, which matters for a program delivered as one Setup.exe.
+- **Keep the reader threads out of the way.** The threads that move bytes from mpv's stdout
+  and its IPC pipe run at below normal priority, so mpv's decode threads get the CPU.
+- **Ask for D3D11 outright on Windows** rather than letting mpv probe Vulkan and OpenGL at
+  startup.
+- **Write the mpv assets only when they change.** They were rewritten on every Start.
+- **Store the window geometry in logical pixels.** It was physical, and since the Python
+  build reads the same settings file and is DPI-unaware, it would have opened a window
+  150% too large on a 150% display.
+
+Checked but deliberately not changed:
+
+- `--cache` is scoped to network sources, which is what mpv's own `auto` default does.
+  Forcing it on for local files measured +13 MB per player and buys nothing.
+- Raising `--msg-level` would quieten mpv's startup chatter, but the Lua beacon that
+  carries the position is logged through the same path, and the saving is negligible.
+
+The repaint change introduced one bug, caught by the pixel verification rather than by
+reading: a resize no longer asked for a frame, so the window kept showing the frame it had
+before the resize, laid out for its old size. Resizes and DPI changes now mark the panel
+dirty.
