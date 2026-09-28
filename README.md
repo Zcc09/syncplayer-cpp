@@ -108,6 +108,13 @@ Not done yet:
 `PORTING-REFERENCE.md` holds the original Python source of every function the port has to
 reproduce, so the behaviour can be compared rather than guessed at.
 
+## Scaling
+
+The interface is laid out in device-independent pixels and follows the display's scaling,
+so text and controls are the same apparent size whether Windows is at 100%, 150% or 200%.
+On a high-resolution screen that means the captions stay readable rather than shrinking
+with the pixel pitch.
+
 ## Performance
 
 The application draws nothing when nothing is happening: an idle window sits at 0.00% of

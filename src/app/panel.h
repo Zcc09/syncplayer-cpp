@@ -36,6 +36,10 @@ class Panel {
   // called from the window procedure
   void on_input(const ui::InputState& in) { in_ = in; }
   void on_resize(float w, float h);
+  // Design units are device-independent pixels: the client size divided by the display
+  // scale, so the interface keeps its proportions on a scaled display.
+  float design_w() const { return width_ / (scale_dpi_ * scale_); }
+  float design_h() const { return height_ / (scale_dpi_ * scale_); }
   void on_dpi(float dpi);
   void draw();
   void tick();  // the sync loop, roughly every 33 ms
@@ -100,6 +104,7 @@ class Panel {
 
   // ---- layout (one function per tab; each fills the content rect it is given) ---
   void layout(float w, float h);
+  void relayout();
   // The stacked column, positioned for a given scroll offset.
   void layout_stacked(const ui::RectF& c, float scroll);
   void layout_sources(const ui::RectF& c);

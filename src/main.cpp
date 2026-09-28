@@ -112,6 +112,8 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_SIZE:
       if (g_panel) {
+        // on_resize reads the window's DPI itself, so the panel is correct even on the
+        // first WM_SIZE, before any WM_DPICHANGED.
         g_panel->on_resize(static_cast<float>(LOWORD(lp)), static_cast<float>(HIWORD(lp)));
         // A resize changes what the panel shows, and with on-demand repainting nothing
         // else would ask for the new frame.

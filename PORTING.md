@@ -164,6 +164,25 @@ the window as mouse moves but the button messages did not land), so clicking is 
 and was not exercised. The Ctrl+1..4 and Ctrl+Tab shortcuts are implemented on the same
 path and are likewise unverified.
 
+## Scaling
+
+Design units are device-independent pixels, which is what Direct2D and the Fluent type
+ramp both assume. The render target is told the window's DPI, so one design unit is
+dpi/96 physical pixels, and the layout is given the client size divided by the display
+scale.
+
+This was wrong at first in a way that is easy to miss on a 100% display: the layout worked
+in physical pixels and the render target was left at 96 DPI, so a 14 unit caption drew as
+14 physical pixels. That is correct at 100% and a third too small at 150%, which is
+exactly how it looked. The minimum window size was already expressed in design units and
+scaled by the window DPI, which is why the window came out the right size while its
+contents did not.
+
+Worth knowing when reading the pixels back: a captured frame is in physical pixels, so any
+check on where the layout puts something has to divide by the display scale first. The
+harness derives it from the captured size against the logical size the app was given,
+which is why it works on any display.
+
 ## Optimisation
 
 Measured, on the machine this was written on (800x700 logical, 150% display scaling):

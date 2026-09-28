@@ -155,7 +155,7 @@ bool Panel::editing_text() const {
 void Panel::on_wheel(int delta) {
   if (tabs_mode_ || scroll_max_ <= 0.0f) return;
   scroll_ = std::clamp(scroll_ - (delta / 120.0f) * 64.0f, 0.0f, scroll_max_);
-  layout(width_ / scale_, height_ / scale_);
+  relayout();
   dirty_ = true;
 }
 
@@ -177,33 +177,46 @@ void Panel::set_dark(bool dark) {
 void Panel::on_resize(float w, float h) {
   width_ = w;
   height_ = h;
+
+  // The window's DPI, so the render target maps one design unit to dpi/96 pixels and the
+  // interface keeps its designed proportions on a scaled display, instead of drawing a 14
+  // unit caption as 14 physical pixels.
+  const UINT window_dpi = GetDpiForWindow(hwnd_);
+  dpi_ = window_dpi ? static_cast<float>(window_dpi) : 96.0f;
+  scale_dpi_ = dpi_ / 96.0f;
+
   renderer_.resize(static_cast<UINT>(w), static_cast<UINT>(h), dpi_);
-  {
-    const UINT sys_dpi = GetDpiForWindow(hwnd_);
-    scale_dpi_ = (sys_dpi ? static_cast<float>(sys_dpi) : 96.0f) / 96.0f;
-  }
-  // Each tab lays itself out to fill the window; the scale is only a safety net for a
-  // window smaller than the minimum size.
-  scale_ = std::min(1.0f, std::min(w / kMinWidth, h / kMinHeight));
+
+  // Design units are device-independent pixels: the client size divided by the display
+  // scale. The fit below is only a safety net for a window smaller than the minimum, and
+  // the minimum is measured in the same units.
+  const float dip_w = w / scale_dpi_;
+  const float dip_h = h / scale_dpi_;
+  scale_ = std::min(1.0f, std::min(dip_w / kMinWidth, dip_h / kMinHeight));
   renderer_.set_scale(scale_);
-  layout(w / scale_, h / scale_);
-  dirty_ = true;  // the new layout needs drawing
+  layout(dip_w / scale_, dip_h / scale_);
+}
+
+void Panel::relayout() {
+  layout(width_ / (scale_dpi_ * scale_), height_ / (scale_dpi_ * scale_));
 }
 
 void Panel::on_dpi(float dpi) {
-  dpi_ = dpi;
-  scale_dpi_ = (dpi > 0.0f) ? dpi / 96.0f : 1.0f;
-  renderer_.resize(static_cast<UINT>(width_), static_cast<UINT>(height_), dpi);
-  scale_ = std::min(1.0f, std::min(width_ / kMinWidth, height_ / kMinHeight));
+  dpi_ = (dpi > 0.0f) ? dpi : 96.0f;
+  scale_dpi_ = dpi_ / 96.0f;
+  renderer_.resize(static_cast<UINT>(width_), static_cast<UINT>(height_), dpi_);
+  const float dip_w = width_ / scale_dpi_;
+  const float dip_h = height_ / scale_dpi_;
+  scale_ = std::min(1.0f, std::min(dip_w / kMinWidth, dip_h / kMinHeight));
   renderer_.set_scale(scale_);
-  layout(width_ / scale_, height_ / scale_);
+  layout(dip_w / scale_, dip_h / scale_);
   dirty_ = true;
 }
 
 void Panel::select_tab(int index) {
   if (index < 0 || index >= kTabCount) return;
   tab_ = static_cast<Tab>(index);
-  layout(width_ / scale_, height_ / scale_);
+  relayout();
   dirty_ = true;  // the new tab lays itself out
 }
 
@@ -573,13 +586,13 @@ void Panel::draw() {
   // input arrives in pixels; the layout works in design units
   ui::InputState mapped = in_;
   if (scale_ > 0.0f) {
-    mapped.mouse_x = in_.mouse_x / scale_;
-    mapped.mouse_y = in_.mouse_y / scale_;
+    mapped.mouse_x = in_.mouse_x / (scale_dpi_ * scale_);
+    mapped.mouse_y = in_.mouse_y / (scale_dpi_ * scale_);
   }
   ui_.begin_frame(renderer_, mapped);
 
   const ui::Theme& t = renderer_.theme();
-  const float dw = width_ / scale_, dh = height_ / scale_;
+  const float dw = design_w(), dh = design_h();
   renderer_.begin();
   renderer_.fill_gradient_v({0, 0, dw, dh},
                             dark_ ? ui::Color{0.11f, 0.11f, 0.12f, 1.0f}
@@ -641,14 +654,15 @@ void Panel::draw_tabs() {
                  t.border, 1.0f);
 
   const unsigned ids[kTabCount] = {ID_TAB0, ID_TAB1, ID_TAB2, ID_TAB3};
-  const float mx = in_.mouse_x / scale_, my = in_.mouse_y / scale_;
+  const float mx = in_.mouse_x / (scale_dpi_ * scale_);
+  const float my = in_.mouse_y / (scale_dpi_ * scale_);
   for (int i = 0; i < kTabCount; ++i) {
     const bool selected = (static_cast<int>(tab_) == i);
     const bool hovered = tab_rect_[i].contains(mx, my);
     // the control gives us the click; the selected look is drawn on top of it
     if (ui_.button(ids[i], tab_rect_[i], kTabNames[i], ui::ButtonStyle::Subtle)) {
       tab_ = static_cast<Tab>(i);
-      layout(width_ / scale_, height_ / scale_);  // the new tab lays itself out
+      relayout();  // the new tab lays itself out
       message_until_ = 0.0;
     }
     if (selected) {
@@ -691,7 +705,8 @@ void Panel::draw_scrollbar() {
                          : 0.0f;
   scroll_thumb_ = {scroll_track_.x, content_.y + travel * frac, track_w, thumb_h};
 
-  const float mx = in_.mouse_x / scale_, my = in_.mouse_y / scale_;
+  const float mx = in_.mouse_x / (scale_dpi_ * scale_);
+  const float my = in_.mouse_y / (scale_dpi_ * scale_);
   const bool over_thumb = scroll_thumb_.contains(mx, my);
   const bool over_track = scroll_track_.contains(mx, my);
   if (in_.mouse_pressed && over_thumb) {
@@ -700,7 +715,7 @@ void Panel::draw_scrollbar() {
   } else if (in_.mouse_pressed && over_track) {
     scroll_ = std::clamp((my - content_.y - thumb_h / 2.0f) / travel * scroll_max_, 0.0f,
                          scroll_max_);
-    layout(width_ / scale_, height_ / scale_);
+    relayout();
     dirty_ = true;
   }
   if (scroll_dragging_) {
@@ -709,7 +724,7 @@ void Panel::draw_scrollbar() {
       const float clamped = std::clamp(want, 0.0f, scroll_max_);
       if (std::fabs(clamped - scroll_) > 0.5f) {
         scroll_ = clamped;
-        layout(width_ / scale_, height_ / scale_);
+        relayout();
         dirty_ = true;
       }
     } else {
@@ -940,7 +955,7 @@ void Panel::draw_settings_tab() {
       tabs_mode_ = as_tabs;
       cfg_.ui_tabs = tabs_mode_;
       scroll_ = 0.0f;
-      layout(width_ / scale_, height_ / scale_);
+      relayout();
       dirty_ = true;
       set_message(tabs_mode_ ? L"Groups split into tabs."
                              : L"One column, like the Python build.");
