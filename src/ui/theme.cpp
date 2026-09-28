@@ -44,6 +44,37 @@ Color system_accent() {
   return {0.0f, 0.47f, 0.83f, 1.0f};  // Fluent's default blue
 }
 
+namespace {
+
+// Sets the accent-derived colours together, so a theme can never end up with a fill and
+// its ink disagreeing. The accent is also checked for being too dark to see: it fills
+// switches, sliders, seek bars and accent buttons, and a near-black one makes all of them
+// vanish into a dark theme.
+void apply_accent(Theme& t, Color accent) {
+  const float lum = 0.2126f * accent.r + 0.7152f * accent.g + 0.0722f * accent.b;
+  const float floor_lum = t.dark ? 0.35f : 0.22f;
+  if (lum < floor_lum) {
+    accent = t.dark ? Color{0.0f, 0.47f, 0.83f, 1.0f}    // Fluent blue
+                    : Color{0.0f, 0.36f, 0.65f, 1.0f};
+  }
+  t.accent = accent;
+  // Fluent puts dark ink on a light accent and white on a dark one.
+  const float l = 0.2126f * accent.r + 0.7152f * accent.g + 0.0722f * accent.b;
+  t.on_accent = (l > 0.5f) ? Color{0.0f, 0.0f, 0.0f, 0.95f}
+                           : Color{1.0f, 1.0f, 1.0f, 0.98f};
+  if (t.dark) {
+    t.accent_hover = {accent.r * 1.15f > 1 ? 1.0f : accent.r * 1.15f,
+                      accent.g * 1.15f > 1 ? 1.0f : accent.g * 1.15f,
+                      accent.b * 1.15f > 1 ? 1.0f : accent.b * 1.15f, 1.0f};
+    t.accent_pressed = {accent.r * 0.85f, accent.g * 0.85f, accent.b * 0.85f, 1.0f};
+  } else {
+    t.accent_hover = {accent.r * 0.92f, accent.g * 0.92f, accent.b * 0.92f, 1.0f};
+    t.accent_pressed = {accent.r * 0.80f, accent.g * 0.80f, accent.b * 0.80f, 1.0f};
+  }
+}
+
+}  // namespace
+
 Theme Theme::dark_theme() {
   Theme t;
   t.dark = true;
@@ -65,8 +96,10 @@ Theme Theme::dark_theme() {
   t.track_fill = {1.0f, 1.0f, 1.0f, 0.38f};
   t.track_hover = {1.0f, 1.0f, 1.0f, 0.20f};
   t.handle = {1.0f, 1.0f, 1.0f, 0.90f};
+  t.knob = {1.0f, 1.0f, 1.0f, 0.98f};  // a switch knob is white in both themes
   t.danger = {0.91f, 0.30f, 0.24f, 1.0f};
   t.success = {0.37f, 0.78f, 0.44f, 1.0f};
+  apply_accent(t, {0.0f, 0.47f, 0.83f, 1.0f});
   return t;
 }
 
@@ -91,6 +124,7 @@ Theme Theme::light_theme() {
   t.track_fill = {0.0f, 0.0f, 0.0f, 0.45f};
   t.track_hover = {0.0f, 0.0f, 0.0f, 0.26f};
   t.handle = {0.13f, 0.13f, 0.13f, 0.90f};
+  t.knob = {1.0f, 1.0f, 1.0f, 0.98f};
   t.danger = {0.77f, 0.16f, 0.11f, 1.0f};
   t.success = {0.06f, 0.49f, 0.19f, 1.0f};
   return t;
@@ -98,17 +132,7 @@ Theme Theme::light_theme() {
 
 Theme Theme::for_system(bool prefer_dark) {
   Theme t = prefer_dark ? dark_theme() : light_theme();
-  const Color accent = system_accent();
-  t.accent = accent;
-  if (prefer_dark) {
-    t.accent_hover = {accent.r * 1.15f > 1 ? 1.0f : accent.r * 1.15f,
-                      accent.g * 1.15f > 1 ? 1.0f : accent.g * 1.15f,
-                      accent.b * 1.15f > 1 ? 1.0f : accent.b * 1.15f, 1.0f};
-    t.accent_pressed = {accent.r * 0.85f, accent.g * 0.85f, accent.b * 0.85f, 1.0f};
-  } else {
-    t.accent_hover = {accent.r * 0.92f, accent.g * 0.92f, accent.b * 0.92f, 1.0f};
-    t.accent_pressed = {accent.r * 0.80f, accent.g * 0.80f, accent.b * 0.80f, 1.0f};
-  }
+  apply_accent(t, system_accent());
   return t;
 }
 

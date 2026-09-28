@@ -164,6 +164,22 @@ the window as mouse moves but the button messages did not land), so clicking is 
 and was not exercised. The Ctrl+1..4 and Ctrl+Tab shortcuts are implemented on the same
 path and are likewise unverified.
 
+## Two faults worth remembering
+
+**Every theme token must be set where the theme is built.** The accent was applied only in
+`Theme::for_system()`, but the panel built its theme with `dark_theme()` and
+`light_theme()`, so `t.accent` was never assigned. A theme is a plain struct, so that
+was uninitialised memory, and it happened to be black: every accent fill - switch tracks,
+slider fills, seek bars, accent buttons - drew pure black on a dark card and was invisible.
+Each builder now applies an accent of its own, `for_system()` overrides it with the
+system's, the ink drawn on an accent is chosen from the accent's luminance, and the
+tokens a control's visibility depends on have Fluent defaults.
+
+**DWM draws a border around a frame-less window.** It sits outside the client area, so
+`PrintWindow` never showed it and the pixel checks looked clean while a line was visible
+around the program. `DWMWA_BORDER_COLOR` with `DWMWA_COLOR_NONE` removes it. Checking
+anything outside the client area means capturing the screen around the window instead.
+
 ## Scaling
 
 Design units are device-independent pixels, which is what Direct2D and the Fluent type

@@ -26,6 +26,8 @@ constexpr UINT_PTR kSyncTimer = 1;
 constexpr DWORD kDwmUseImmersiveDarkMode = 20;
 constexpr DWORD kDwmWindowCornerPreference = 33;
 constexpr DWORD kDwmSystemBackdropType = 38;
+constexpr DWORD kDwmBorderColor = 34;
+constexpr DWORD kDwmColorNone = 0xFFFFFFFE;  // DWMWA_COLOR_NONE
 constexpr int kDwmCornerRound = 2;       // DWMWCP_ROUND
 constexpr int kDwmBackdropMainWindow = 2;  // DWMSBT_MAINWINDOW (Mica)
 
@@ -61,6 +63,10 @@ void apply_dwm(HWND hwnd, bool dark) {
   DwmSetWindowAttribute(hwnd, kDwmWindowCornerPreference, &corner, sizeof corner);
   const int backdrop = kDwmBackdropMainWindow;
   DwmSetWindowAttribute(hwnd, kDwmSystemBackdropType, &backdrop, sizeof backdrop);
+  // DWM draws a border around a window without a frame, outside the client area, which
+  // shows as a line around the program when it is not focused. Ask for none.
+  const DWORD border = kDwmColorNone;
+  DwmSetWindowAttribute(hwnd, kDwmBorderColor, &border, sizeof border);
 }
 
 LRESULT hit_test(HWND hwnd, POINT screen_pt) {

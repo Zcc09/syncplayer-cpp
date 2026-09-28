@@ -98,7 +98,9 @@ bool Panel::init(HWND hwnd) {
   hwnd_ = hwnd;
   cfg_ = Config::load();
   dark_ = (cfg_.theme == "dark") || (cfg_.theme != "light" && ui::system_prefers_dark());
-  renderer_.set_theme(dark_ ? ui::Theme::dark_theme() : ui::Theme::light_theme());
+  // for_system(), not dark_theme()/light_theme() directly: it also applies the
+  // system accent, which is what fills switches, sliders and accent buttons.
+  renderer_.set_theme(ui::Theme::for_system(dark_));
   if (!renderer_.init(hwnd)) {
     MessageBoxW(hwnd, L"Direct2D could not be initialised.", L"SyncPlayer",
                 MB_OK | MB_ICONERROR);
@@ -167,7 +169,7 @@ int Panel::min_height() const {
 
 void Panel::set_dark(bool dark) {
   dark_ = dark;
-  renderer_.set_theme(dark_ ? ui::Theme::dark_theme() : ui::Theme::light_theme());
+  renderer_.set_theme(ui::Theme::for_system(dark_));
   const BOOL use_dark = dark_ ? TRUE : FALSE;
   constexpr DWORD kImmersiveDarkMode = 20;
   DwmSetWindowAttribute(hwnd_, kImmersiveDarkMode, &use_dark, sizeof use_dark);

@@ -46,10 +46,14 @@ struct Theme {
   Color text_disabled;
 
   // accent
-  Color accent;
-  Color accent_hover;
-  Color accent_pressed;
-  Color on_accent;       // text on an accent fill
+  // These four carry a control's visibility: if one is left unset the switch track,
+  // slider fill or accent button disappears. They get Fluent defaults so that cannot
+  // happen silently.
+  Color accent{0.0f, 0.47f, 0.83f, 1.0f};
+  Color accent_hover{0.0f, 0.54f, 0.95f, 1.0f};
+  Color accent_pressed{0.0f, 0.40f, 0.71f, 1.0f};
+  Color on_accent{1.0f, 1.0f, 1.0f, 0.98f};  // drawn on an accent fill
+  Color knob{1.0f, 1.0f, 1.0f, 0.98f};       // a switch knob, white in both themes
 
   // neutral controls (standard buttons)
   Color control;

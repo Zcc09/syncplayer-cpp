@@ -173,8 +173,8 @@ bool Controls::toggle(unsigned id, const RectF& r, bool& value, const std::wstri
   r_->fill_rounded(track, track_h / 2.0f, on);
   const float knob_r = track_h / 2.0f - 3.0f;
   const float knob_x = value ? track.x + track_w - track_h / 2.0f : track.x + track_h / 2.0f;
-  r_->fill_circle(knob_x, track.y + track_h / 2.0f, knob_r,
-                  value ? t.on_accent : t.handle);
+  // WinUI's switch knob is white in both themes; only the track carries the accent.
+  r_->fill_circle(knob_x, track.y + track_h / 2.0f, knob_r, t.knob);
   return changed;
 }
 
