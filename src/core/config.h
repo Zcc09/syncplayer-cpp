@@ -36,6 +36,7 @@ struct Config {
   bool show_readout = true;
   std::string theme = "system";       // system | dark | light
   int tab = 0;                        // the tab the panel reopens on
+  bool ui_tabs = false;               // false: one column, like the Python build
 
   // window geometry
   WindowRect window;

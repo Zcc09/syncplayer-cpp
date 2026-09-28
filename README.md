@@ -48,13 +48,20 @@ cmake --build build
 4. Drag either timeline to move one side, or lock sync and use the master bar to move
    both while keeping the offset.
 
-### The tabs
+### The groups
 
-- **Sources**: the two files, with Browse, and the Start and Play buttons.
-- **Sync**: transport, the three timelines, go-to, and the alignment offset.
-- **Windows**: arrange side by side, floating picture-in-picture, volume for each side
-  and overall, and the keyboard shortcuts.
-- **Settings**: dark theme, the status readout, and the paths the app is actually using.
+The groups run down one column, the way the Python build arranges them, and the column
+scrolls with the wheel or the scrollbar:
+
+- videos, and the buttons that start them
+- playback, with the timelines and the alignment offset
+- volume for each side and overall
+- the window arrangement and floating picture-in-picture
+- appearance, the status bar, and the paths the app is actually using
+
+If you would rather see one group at a time, turn on **Split the groups into tabs** under
+Arrangement; the same groups then become four tabs, and the window's minimum height rises
+to fit a whole tab. The choice is remembered.
 
 ### Keyboard
 

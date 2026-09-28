@@ -68,7 +68,7 @@ enum Id {
   ID_BAR_MOVIE, ID_BAR_REACTION, ID_BAR_MASTER, ID_GOTO, ID_OFFSET,
   ID_ARRANGE, ID_PIP,
   ID_VOL_A, ID_VOL_B, ID_VOL_M,
-  ID_DARK, ID_READOUT,
+  ID_DARK, ID_READOUT, ID_TABS,
   ID_MIN, ID_CLOSE,
 };
 
@@ -119,6 +119,7 @@ bool Panel::init(HWND hwnd) {
   set_dark(dark_);
   // reopen on the tab the user left, which is what a WinUI page does
   tab_ = static_cast<Tab>(std::clamp(cfg_.tab, 0, kTabCount - 1));
+  tabs_mode_ = cfg_.ui_tabs;
   return true;
 }
 
@@ -132,6 +133,7 @@ void Panel::shutdown() {
   cfg_.jump_sec = jump_seconds();
   cfg_.theme = dark_ ? "dark" : "light";
   cfg_.tab = static_cast<int>(tab_);
+  cfg_.ui_tabs = tabs_mode_;
   cfg_.save();
   renderer_.shutdown();
 }
@@ -148,6 +150,19 @@ bool Panel::editing_text() const {
   const unsigned f = ui_.focused();
   return f == ID_SRC_A || f == ID_SRC_B || f == ID_JUMP || f == ID_SPEED ||
          f == ID_GOTO || f == ID_OFFSET;
+}
+
+void Panel::on_wheel(int delta) {
+  if (tabs_mode_ || scroll_max_ <= 0.0f) return;
+  scroll_ = std::clamp(scroll_ - (delta / 120.0f) * 64.0f, 0.0f, scroll_max_);
+  layout(width_ / scale_, height_ / scale_);
+  dirty_ = true;
+}
+
+int Panel::min_height() const {
+  // A stacked column scrolls, so it needs far less room than a tabbed one, which has to
+  // show a whole tab.
+  return static_cast<int>(tabs_mode_ ? kMinHeight : 520.0f);
 }
 
 void Panel::set_dark(bool dark) {
@@ -256,27 +271,170 @@ void Panel::layout(float w, float h) {
   btn_min_ = {w - 92.0f, 0, 46.0f, kTitleBarH};
   tab_strip_ = {0, kTitleBarH, w, kTabStripH};
 
-  // the status strip is pinned to the bottom; the tab content fills what is above it
+  // the status strip is pinned to the bottom in both arrangements
   status_strip_ = {ui::kPad, h - kStripH - 8.0f, w - 2 * ui::kPad, kStripH};
-  const float content_top = kTitleBarH + kTabStripH + 12.0f;
+
+  if (tabs_mode_) {
+    tab_strip_ = {0, kTitleBarH, w, kTabStripH};
+    const float content_top = kTitleBarH + kTabStripH + 12.0f;
+    content_ = {ui::kPad, content_top, w - 2 * ui::kPad,
+                std::max(160.0f, status_strip_.y - content_top - 12.0f)};
+
+    // tab widths follow their labels, so a longer name never clips
+    float tx = ui::kPad;
+    for (int i = 0; i < kTabCount; ++i) {
+      const float tw = renderer_.measure(kTabNames[i], 14.0f) + 32.0f;
+      tab_rect_[i] = {tx, kTitleBarH + 7.0f, tw, 32.0f};
+      tx += tw + 6.0f;
+    }
+
+    switch (tab_) {
+      case Tab::Sources: layout_sources(content_); break;
+      case Tab::Sync: layout_sync(content_); break;
+      case Tab::Windows: layout_windows(content_); break;
+      case Tab::Settings: layout_settings(content_); break;
+      default: break;
+    }
+    return;
+  }
+
+  // the stacked column: no tab strip, so the content starts right under the title bar
+  tab_strip_ = {};
+  const float content_top = kTitleBarH + 12.0f;
   content_ = {ui::kPad, content_top, w - 2 * ui::kPad,
-              std::max(160.0f, status_strip_.y - content_top - 12.0f)};
+              std::max(120.0f, status_strip_.y - content_top - 12.0f)};
 
-  // tab widths follow their labels, so a longer name never clips
-  float tx = ui::kPad;
-  for (int i = 0; i < kTabCount; ++i) {
-    const float tw = renderer_.measure(kTabNames[i], 14.0f) + 32.0f;
-    tab_rect_[i] = {tx, kTitleBarH + 7.0f, tw, 32.0f};
-    tx += tw + 6.0f;
+  // Measure first, then place: the height of the column decides how far it can scroll.
+  layout_stacked(content_, 0.0f);
+  scroll_max_ = std::max(0.0f, content_h_ - content_.h);
+  scroll_ = std::clamp(scroll_, 0.0f, scroll_max_);
+  layout_stacked(content_, scroll_);
+}
+
+// ---------------------------------------------------------------------------
+// the stacked column: one group under another, the way the Python build reads
+// ---------------------------------------------------------------------------
+void Panel::layout_stacked(const ui::RectF& c, float scroll) {
+  const float pad = ui::kPad;
+  const float gap = ui::kGap;
+  const float row = 32.0f;      // a control's height
+  const float lbl = 16.0f;      // a caption above it
+  const float field_row = lbl + 4.0f + row;
+  const float title = kCardTop + kCardTitleH + 8.0f;
+
+  const float x = c.x, w = c.w;
+  float y = c.y - scroll;
+
+  auto card = [&](float height) {
+    ui::RectF r{x, y, w, height};
+    y += height + gap;
+    return r;
+  };
+
+  // videos
+  {
+    card_videos_ = card(title + 2 * (field_row + 8.0f) + 4.0f + 18.0f + 10.0f);
+    const float label_w = 74.0f, browse_w = 92.0f;
+    float ry = card_videos_.y + title;
+    for (int i = 0; i < 2; ++i) {
+      const float fx = card_videos_.x + pad + label_w;
+      const float fw = card_videos_.w - 2 * pad - label_w - browse_w - gap;
+      src_row_[i].label = {card_videos_.x + pad, ry, label_w, lbl};
+      src_row_[i].field = {fx, ry + lbl + 4.0f, fw, row};
+      src_row_[i].browse = {fx + fw + gap, ry + lbl + 4.0f, browse_w, row};
+      ry += field_row + 8.0f;
+    }
+    src_hint_ = {card_videos_.x + pad, ry + 2.0f, card_videos_.w - 2 * pad, 18.0f};
   }
 
-  switch (tab_) {
-    case Tab::Sources: layout_sources(content_); break;
-    case Tab::Sync: layout_sync(content_); break;
-    case Tab::Windows: layout_windows(content_); break;
-    case Tab::Settings: layout_settings(content_); break;
-    default: break;
+  // get started
+  {
+    card_actions_ = card(title + row + 8.0f + 18.0f + 10.0f);
+    const float inner = card_actions_.y + title;
+    btn_start_ = {card_actions_.x + pad, inner, 190.0f, row};
+    btn_play_ = {btn_start_.x + btn_start_.w + gap, inner, 150.0f, row};
   }
+
+  // playback
+  {
+    card_playback_ = card(title + row + 8.0f + field_row + 10.0f);
+    float ry = card_playback_.y + title;
+    btn_sync_play_ = {card_playback_.x + pad, ry, 150.0f, row};
+    btn_back_ = {btn_sync_play_.x + btn_sync_play_.w + gap, ry, 96.0f, row};
+    btn_fwd_ = {btn_back_.x + btn_back_.w + gap, ry, 96.0f, row};
+    ry += row + 8.0f;
+    field_jump_ = {card_playback_.x + pad, ry + lbl + 4.0f, 120.0f, row};
+    field_speed_ = {field_jump_.x + 120.0f + gap, field_jump_.y, 120.0f, row};
+    const float lx = field_speed_.x + 120.0f + gap;
+    toggle_lock_ = {lx, ry, card_playback_.x + card_playback_.w - pad - lx, field_row};
+  }
+
+  // timelines
+  {
+    card_timelines_ = card(title + 3 * 36.0f + 6.0f + field_row + 10.0f);
+    float ry = card_timelines_.y + title;
+    const float lw = 62.0f, tw = 96.0f;
+    for (int i = 0; i < 3; ++i) {
+      tl_[i].label = {card_timelines_.x + pad, ry, lw, lbl};
+      tl_[i].bar = {card_timelines_.x + pad + lw, ry + 2.0f,
+                    card_timelines_.w - 2 * pad - lw - tw - gap, 20.0f};
+      tl_[i].time = {tl_[i].bar.x + tl_[i].bar.w + gap, ry - 1.0f, tw, lbl + 2.0f};
+      ry += 36.0f;
+    }
+    field_goto_ = {card_timelines_.x + pad, ry + 6.0f + lbl + 4.0f, 220.0f, row};
+  }
+
+  // alignment
+  {
+    card_align_ = card(title + field_row + 8.0f + 18.0f + 10.0f);
+    const float ay = card_align_.y + title;
+    field_offset_ = {card_align_.x + pad, ay + lbl + 4.0f, 200.0f, row};
+    lbl_offset_ = {field_offset_.x + 200.0f + gap, field_offset_.y + 7.0f,
+                   card_align_.w - 2 * pad - 200.0f - gap, lbl};
+  }
+
+  // volume
+  {
+    card_volume_ = card(title + 3 * 36.0f + 10.0f);
+    float vy = card_volume_.y + title;
+    const float lw = 96.0f;
+    for (int i = 0; i < 3; ++i) {
+      vol_label_[i] = {card_volume_.x + pad, vy, lw, lbl};
+      vol_slider_[i] = {card_volume_.x + pad + lw, vy + 4.0f,
+                        card_volume_.w - 2 * pad - lw - gap, 20.0f};
+      vy += 36.0f;
+    }
+  }
+
+  // windows
+  {
+    card_windows_ = card(title + row + 8.0f + 18.0f + 10.0f);
+    const float wy = card_windows_.y + title;
+    const float half = (card_windows_.w - 2 * pad - gap) / 2.0f;
+    btn_arrange_ = {card_windows_.x + pad, wy, half, row};
+    btn_pip_ = {btn_arrange_.x + half + gap, wy, half, row};
+  }
+  card_shortcuts_ = {};  // a tab convenience, not part of the stacked column
+
+  // settings
+  {
+    const float toggle_h = kCardTop + kCardTitleH + 8.0f + 32.0f + 12.0f;
+    card_appearance_ = card(toggle_h);
+    toggle_dark_ = {card_appearance_.x + pad, card_appearance_.y + title,
+                    card_appearance_.w - 2 * pad, 32.0f};
+
+    card_status_ = card(toggle_h);
+    toggle_readout_ = {card_status_.x + pad, card_status_.y + title,
+                       card_status_.w - 2 * pad, 32.0f};
+
+    card_tabs_ = card(toggle_h);
+    toggle_tabs_ = {card_tabs_.x + pad, card_tabs_.y + title,
+                    card_tabs_.w - 2 * pad, 32.0f};
+
+    card_about_ = card(kCardTop + kCardTitleH + 8.0f + 3 * 24.0f + 44.0f + 12.0f);
+  }
+
+  content_h_ = (y - gap + scroll) - c.y + 8.0f;
 }
 
 void Panel::layout_sources(const ui::RectF& c) {
@@ -375,11 +533,12 @@ void Panel::layout_windows(const ui::RectF& c) {
 
 void Panel::layout_settings(const ui::RectF& c) {
   const float toggle_h = kCardTop + kCardTitleH + 8.0f + 32.0f + 12.0f;
-  const float about_h = std::max(200.0f, c.h - 2 * toggle_h - 2 * ui::kGap);
+  const float about_h = std::max(150.0f, c.h - 3 * toggle_h - 3 * ui::kGap);
 
   Column col{c.x, c.w, c.y, ui::kGap};
   card_appearance_ = col.next(toggle_h);
   card_status_ = col.next(toggle_h);
+  card_tabs_ = col.next(toggle_h);
   card_about_ = col.next(about_h);
 
   const float ay = card_appearance_.y + kCardTop + kCardTitleH + 8.0f;
@@ -387,6 +546,8 @@ void Panel::layout_settings(const ui::RectF& c) {
                   32.0f};
   const float sy = card_status_.y + kCardTop + kCardTitleH + 8.0f;
   toggle_readout_ = {card_status_.x + ui::kPad, sy, card_status_.w - 2 * ui::kPad, 32.0f};
+  const float ty = card_tabs_.y + kCardTop + kCardTitleH + 8.0f;
+  toggle_tabs_ = {card_tabs_.x + ui::kPad, ty, card_tabs_.w - 2 * ui::kPad, 32.0f};
 }
 
 // ---------------------------------------------------------------------------
@@ -426,15 +587,26 @@ void Panel::draw() {
                             t.window_bg);
 
   draw_title_bar();
-  draw_tabs();
-  switch (tab_) {
-    case Tab::Sources: draw_sources_tab(); break;
-    case Tab::Sync: draw_sync_tab(); break;
-    case Tab::Windows: draw_windows_tab(); break;
-    case Tab::Settings: draw_settings_tab(); break;
-    default: break;
+  if (tabs_mode_) {
+    draw_tabs();
+    switch (tab_) {
+      case Tab::Sources: draw_sources_tab(); break;
+      case Tab::Sync: draw_sync_tab(); break;
+      case Tab::Windows: draw_windows_tab(); break;
+      case Tab::Settings: draw_settings_tab(); break;
+      default: break;
+    }
+  } else {
+    // The column scrolls, so it is drawn inside a clip and only the visible part takes
+    // input: a control that has scrolled out of sight must not answer a click.
+    renderer_.clip_push(content_);
+    ui_.set_active_area(content_);
+    draw_stacked();
+    ui_.set_active_area(ui::RectF{});
+    renderer_.clip_pop();
   }
   draw_status();
+  if (!tabs_mode_ && scroll_max_ > 0.0f) draw_scrollbar();
 
   renderer_.end();
   ui_.end_frame();
@@ -494,6 +666,62 @@ void Panel::draw_tabs() {
                      14.0f, ui::TextAlign::Center);
     }
   }
+}
+
+void Panel::draw_stacked() {
+  // The group functions are the same ones the tabs use; here they are stacked, and the
+  // layout pass has already placed every card for the current scroll offset.
+  draw_sources_tab();
+  draw_sync_tab();
+  draw_windows_tab();
+  draw_settings_tab();
+}
+
+void Panel::draw_scrollbar() {
+  const ui::Theme& t = renderer_.theme();
+  const float track_w = 5.0f;
+  scroll_track_ = {content_.x + content_.w + 4.0f, content_.y, track_w, content_.h};
+
+  const float visible = content_.h;
+  const float ratio = std::clamp(visible / std::max(content_h_, 1.0f), 0.08f, 1.0f);
+  const float thumb_h = std::max(40.0f, visible * ratio);
+  const float travel = std::max(1.0f, visible - thumb_h);
+  const float frac = (scroll_max_ > 0.0f)
+                         ? std::clamp(scroll_ / scroll_max_, 0.0f, 1.0f)
+                         : 0.0f;
+  scroll_thumb_ = {scroll_track_.x, content_.y + travel * frac, track_w, thumb_h};
+
+  const float mx = in_.mouse_x / scale_, my = in_.mouse_y / scale_;
+  const bool over_thumb = scroll_thumb_.contains(mx, my);
+  const bool over_track = scroll_track_.contains(mx, my);
+  if (in_.mouse_pressed && over_thumb) {
+    scroll_dragging_ = true;
+    scroll_drag_grab_ = my - scroll_thumb_.y;
+  } else if (in_.mouse_pressed && over_track) {
+    scroll_ = std::clamp((my - content_.y - thumb_h / 2.0f) / travel * scroll_max_, 0.0f,
+                         scroll_max_);
+    layout(width_ / scale_, height_ / scale_);
+    dirty_ = true;
+  }
+  if (scroll_dragging_) {
+    if (in_.mouse_down) {
+      const float want = (my - scroll_drag_grab_ - content_.y) / travel * scroll_max_;
+      const float clamped = std::clamp(want, 0.0f, scroll_max_);
+      if (std::fabs(clamped - scroll_) > 0.5f) {
+        scroll_ = clamped;
+        layout(width_ / scale_, height_ / scale_);
+        dirty_ = true;
+      }
+    } else {
+      scroll_dragging_ = false;
+    }
+  }
+
+  renderer_.fill_rounded(scroll_track_, track_w / 2.0f,
+                         t.dark ? ui::Color{1, 1, 1, 0.06f} : ui::Color{0, 0, 0, 0.05f});
+  const bool hot = over_thumb || scroll_dragging_;
+  renderer_.fill_rounded(scroll_thumb_, track_w / 2.0f,
+                         hot ? t.text_secondary : t.track_hover);
 }
 
 void Panel::draw_sources_tab() {
@@ -673,6 +901,7 @@ void Panel::draw_windows_tab() {
   }
   if (changed) apply_volume();
 
+  if (card_shortcuts_.h <= 0.0f) return;  // a tab convenience, not in the column
   ui_.card(card_shortcuts_, L"SHORTCUTS");
   float sy = card_shortcuts_.y + kCardTop + kCardTitleH + 8.0f;
   const wchar_t* keys[4][2] = {{L"Space", L"Play or pause both videos"},
@@ -704,6 +933,21 @@ void Panel::draw_settings_tab() {
     set_message(cfg_.show_readout ? L"Readout shown." : L"Readout hidden.");
   }
 
+  if (card_tabs_.h > 0.0f) {
+    ui_.card(card_tabs_, L"ARRANGEMENT");
+    bool as_tabs = tabs_mode_;
+    if (ui_.toggle(ID_TABS, toggle_tabs_, as_tabs, L"Split the groups into tabs")) {
+      tabs_mode_ = as_tabs;
+      cfg_.ui_tabs = tabs_mode_;
+      scroll_ = 0.0f;
+      layout(width_ / scale_, height_ / scale_);
+      dirty_ = true;
+      set_message(tabs_mode_ ? L"Groups split into tabs."
+                             : L"One column, like the Python build.");
+    }
+  }
+
+  if (card_about_.h <= 0.0f) return;
   ui_.card(card_about_, L"ABOUT");
   float ay = card_about_.y + kCardTop + kCardTitleH + 8.0f;
   const auto mpv = find_mpv();

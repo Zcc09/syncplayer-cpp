@@ -145,9 +145,16 @@ otherwise the panel would scale itself down and the type would come out smaller 
 design. The panel re-checks the client rectangle every frame, because a late
 WM_DPICHANGED can resize the window after the opening clamp.
 
-Verified by reading the rendered pixels of all four tabs: every card lands within a pixel
-of the layout's own numbers, the status strip is inside the window, and the selected-tab
-indicator moves across the four tab positions.
+Verified by reading the rendered pixels: in the stacked arrangement the groups appear in
+order down the column with the first card under the title bar, the status strip is pinned
+inside the window, and the wheel scrolls the column; in the tabbed arrangement every card
+lands within a pixel of the layout's own numbers and the selected-tab indicator moves
+across the four tab positions.
+
+The stacked arrangement is the default, because it is how the Python build reads. The
+column is taller than the window, so the panel scrolls: the wheel, a draggable scrollbar,
+and controls that respect the visible area so a group scrolled out of sight does not take
+a click. The tabbed arrangement remains available as a setting.
 
 ### Not yet verified
 

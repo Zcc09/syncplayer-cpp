@@ -56,7 +56,11 @@ void Controls::end_frame() {
 }
 
 bool Controls::hit(const RectF& r) const {
-  return r.contains(in_.mouse_x, in_.mouse_y);
+  if (!r.contains(in_.mouse_x, in_.mouse_y)) return false;
+  // A scrolled page draws inside a clip; a control that scrolled out of sight must not
+  // answer a click.
+  if (has_active_area_ && !active_area_.contains(in_.mouse_x, in_.mouse_y)) return false;
+  return true;
 }
 
 bool Controls::pressed_in(const RectF& r) const {

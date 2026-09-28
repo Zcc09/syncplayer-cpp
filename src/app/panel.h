@@ -1,9 +1,8 @@
-// The panel: the application's own window, laid out as Fluent cards in tabs.
+// The panel: the application's own window, laid out as Fluent cards.
 //
-// Sections are grouped the way a WinUI settings page groups them, so each tab holds one
-// job: choosing the two videos, keeping them in sync, the display and audio, and the
-// application's own settings. Each tab lays itself out to fill the window it is given,
-// so nothing is scaled down and nothing is clipped.
+// The default is the Python build's arrangement: one column of groups, scrolled, with the
+// status strip pinned at the bottom. Splitting the groups into tabs is offered as a
+// setting, for a window that would rather show one job at a time.
 #pragma once
 
 #include <optional>
@@ -55,6 +54,13 @@ class Panel {
 
   void remember_window(int x, int y, int w, int h);
 
+  // Mouse wheel, in multiples of WHEEL_DELTA, for the scrolled column.
+  void on_wheel(int delta);
+
+  // The smallest height that suits the current arrangement: a stacked column scrolls, so
+  // it needs far less room than a tabbed one, which must show a whole tab.
+  int min_height() const;
+
   // True while a text field has focus, so the window's shortcuts stay out of the way of
   // typing.
   bool editing_text() const;
@@ -94,6 +100,8 @@ class Panel {
 
   // ---- layout (one function per tab; each fills the content rect it is given) ---
   void layout(float w, float h);
+  // The stacked column, positioned for a given scroll offset.
+  void layout_stacked(const ui::RectF& c, float scroll);
   void layout_sources(const ui::RectF& c);
   void layout_sync(const ui::RectF& c);
   void layout_windows(const ui::RectF& c);
@@ -102,6 +110,8 @@ class Panel {
   // ---- drawing -------------------------------------------------------------
   void draw_title_bar();
   void draw_tabs();
+  void draw_stacked();
+  void draw_scrollbar();
   void draw_sources_tab();
   void draw_sync_tab();
   void draw_windows_tab();
@@ -134,8 +144,15 @@ class Panel {
   ui::RectF vol_slider_[3], vol_label_[3];
 
   // settings
-  ui::RectF card_appearance_, card_status_, card_about_;
-  ui::RectF toggle_dark_, toggle_readout_;
+  ui::RectF card_appearance_, card_status_, card_tabs_, card_about_;
+  ui::RectF toggle_dark_, toggle_readout_, toggle_tabs_;
+
+  // the scrolled column
+  ui::RectF scroll_track_, scroll_thumb_;
+  float scroll_ = 0.0f, scroll_max_ = 0.0f, content_h_ = 0.0f;
+  bool scroll_dragging_ = false;
+  float scroll_drag_grab_ = 0.0f;
+  bool tabs_mode_ = false;
 
   Config cfg_;
   MpvProcess movie_;

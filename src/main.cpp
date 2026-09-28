@@ -45,7 +45,10 @@ int min_width_for(HWND hwnd) {
 int min_height_for(HWND hwnd) {
   const UINT dpi = hwnd ? GetDpiForWindow(hwnd) : 96;
   const float s = (dpi ? static_cast<float>(dpi) : 96.0f) / 96.0f;
-  return static_cast<int>(sp::app::Panel::kMinHeight * s);
+  // A stacked column scrolls and needs much less room than a tabbed one.
+  const int design = g_panel ? g_panel->min_height()
+                             : static_cast<int>(sp::app::Panel::kMinHeight);
+  return static_cast<int>(design * s);
 }
 
 // DWM supplies the rounded corners, the dark title bar treatment and, where it exists,
@@ -154,6 +157,13 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       InvalidateRect(hwnd, nullptr, FALSE);
       return 0;
     }
+
+    case WM_MOUSEWHEEL:
+      if (g_panel) {
+        g_panel->on_wheel(GET_WHEEL_DELTA_WPARAM(wp));
+        InvalidateRect(hwnd, nullptr, FALSE);
+      }
+      return 0;
 
     case WM_MOUSELEAVE:
       g_tracking_leave = false;

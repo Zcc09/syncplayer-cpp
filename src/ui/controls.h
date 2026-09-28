@@ -49,6 +49,10 @@ struct InputState {
 
 class Controls {
  public:
+  // The area controls may be interacted with. A scrolled page draws inside a clip, and
+  // a control that scrolled out of sight must not take a click.
+  void set_active_area(const RectF& r) { active_area_ = r; has_active_area_ = r.w > 0.0f && r.h > 0.0f; }
+
   void begin_frame(Renderer& r, const InputState& in);
   void end_frame();
 
@@ -87,6 +91,8 @@ class Controls {
   bool pressed_in(const RectF& r) const;
   unsigned next_id_ = 1;
 
+  RectF active_area_{};
+  bool has_active_area_ = false;
   Renderer* r_ = nullptr;
   InputState in_;
   unsigned hot_ = 0;
