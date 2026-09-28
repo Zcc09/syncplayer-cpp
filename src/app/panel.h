@@ -27,8 +27,8 @@ class Panel {
   // fifth of what the 33ms cadence did. When nothing is changing, no frame is drawn.
   static constexpr double kPlayingRepaintSecs = 0.15;
 
-  static constexpr float kMinWidth = 800.0f;
-  static constexpr float kMinHeight = 700.0f;
+  static constexpr float kMinWidth = 420.0f;
+  static constexpr float kMinHeight = 560.0f;
 
   bool init(HWND hwnd);
   void shutdown();
@@ -107,6 +107,15 @@ class Panel {
   void relayout();
   // The stacked column, positioned for a given scroll offset.
   void layout_stacked(const ui::RectF& c, float scroll);
+  // One builder per group: the column and the tabs both use these, so the two
+  // arrangements cannot drift apart. Each returns the height the group needs at this
+  // width, which is what stops a group drawing outside its own card.
+  float build_videos(float x, float y, float w);
+  float build_playback(float x, float y, float w);
+  float build_timelines(float x, float y, float w, float min_h);
+  float build_volume(float x, float y, float w);
+  float build_windows(float x, float y, float w, bool with_shortcuts);
+  float build_settings_groups(float x, float y, float w, bool with_about);
   void layout_settings_page(const ui::RectF& c);
   void layout_sources(const ui::RectF& c);
   void layout_sync(const ui::RectF& c);
@@ -141,7 +150,7 @@ class Panel {
   SourceRow src_row_[2];
 
   // sync
-  ui::RectF card_playback_, card_timelines_, card_align_;
+  ui::RectF card_playback_, card_timelines_;
   ui::RectF btn_sync_play_, btn_back_, btn_fwd_, field_jump_, field_speed_, toggle_lock_;
   TimelineRow tl_[3];
   ui::RectF field_goto_, field_offset_, lbl_offset_;

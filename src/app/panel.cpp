@@ -77,19 +77,6 @@ const wchar_t* const kTabNames[kTabCount] = {L"Sources", L"Sync", L"Windows",
 
 // Places blocks down a column, either at a fixed height or filling what is left, so a
 // tab always occupies exactly the window it was given.
-struct Column {
-  float x, w, y, gap;
-  ui::RectF next(float h) {
-    const ui::RectF r{x, y, w, h};
-    y += h + gap;
-    return r;
-  }
-  ui::RectF fill_to(float bottom) {
-    const ui::RectF r{x, y, w, std::max(0.0f, bottom - y)};
-    y = bottom + gap;
-    return r;
-  }
-};
 
 }  // namespace
 
@@ -336,219 +323,225 @@ void Panel::layout(float w, float h) {
 // ---------------------------------------------------------------------------
 // the stacked column: one group under another, the way the Python build reads
 // ---------------------------------------------------------------------------
-void Panel::layout_stacked(const ui::RectF& c, float scroll) {
-  const float pad = ui::kPad;
-  const float gap = ui::kGap;
-  const float row = 32.0f;      // a control's height
-  const float lbl = 16.0f;      // a caption above it
-  const float field_row = lbl + 4.0f + row;
-  const float title = kCardTop + kCardTitleH + 8.0f;
+namespace {
 
-  const float x = c.x, w = c.w;
-  float y = c.y - scroll;
+// Places items left to right inside a group and moves one to the next line when it does not
+// fit, then reports the height used so the group can size itself to its contents. This is what
+// keeps elements inside their own group at any window width instead of over the next one.
+struct Flow {
+  float x0 = 0.0f, y0 = 0.0f, max_w = 0.0f, gap = 8.0f;
+  float x = 0.0f, y = 0.0f, line_h = 0.0f, bottom = 0.0f;
 
-  auto card = [&](float height) {
-    ui::RectF r{x, y, w, height};
-    y += height + gap;
+  void begin(float x_, float y_, float w, float g) {
+    x0 = x_; y0 = y_; max_w = w; gap = g;
+    x = x0; y = y0; line_h = 0.0f; bottom = y0;
+  }
+
+  ui::RectF place(float w, float h) {
+    if (w > max_w) w = std::max(max_w, 1.0f);
+    if (x > x0 && x + w > x0 + max_w) {  // no room on this line
+      y += line_h + gap;
+      x = x0;
+      line_h = 0.0f;
+    }
+    const ui::RectF r{x, y, w, h};
+    x += w + gap;
+    if (h > line_h) line_h = h;
+    if (y + h > bottom) bottom = y + h;
     return r;
-  };
+  }
 
-  // videos
-  {
-    card_videos_ = card(title + 2 * (field_row + 8.0f) + 4.0f + 18.0f + 10.0f);
-    const float label_w = 74.0f, browse_w = 92.0f;
-    float ry = card_videos_.y + title;
-    for (int i = 0; i < 2; ++i) {
-      const float fx = card_videos_.x + pad + label_w;
-      const float fw = card_videos_.w - 2 * pad - label_w - browse_w - gap;
-      src_row_[i].label = {card_videos_.x + pad, ry, label_w, lbl};
-      src_row_[i].field = {fx, ry + lbl + 4.0f, fw, row};
-      src_row_[i].browse = {fx + fw + gap, ry + lbl + 4.0f, browse_w, row};
-      ry += field_row + 8.0f;
+  float height() const { return bottom - y0; }
+};
+
+}  // namespace
+
+float Panel::build_videos(float x, float y, float w) {
+  const float inner = std::max(80.0f, w - 2 * ui::kPad);
+  Flow f;
+  f.begin(x + ui::kPad, y + kCardTop + kCardTitleH + 8.0f, inner, ui::kGap);
+
+  const float field_w = std::max(150.0f, std::min(420.0f, (inner - ui::kGap) * 0.5f));
+  const float field_h = kLabelH + kRowGap + kFieldH;
+  SourceRow* fields[2] = {&src_row_[0], &src_row_[1]};
+  for (SourceRow* fld : fields) {
+    const ui::RectF it = f.place(field_w, field_h);
+    fld->label = {it.x, it.y, it.w, kLabelH};
+    fld->field = {it.x, it.y + kLabelH + kRowGap, std::max(60.0f, it.w - 40.0f), kFieldH};
+    fld->browse = {it.x + it.w - 36.0f, it.y + kLabelH + kRowGap, 36.0f, kFieldH};
+  }
+
+  src_hint_ = f.place(inner, 40.0f);
+  card_videos_ = {x, y, w, kCardTop + kCardTitleH + 8.0f + f.height() + 12.0f};
+  return card_videos_.h;
+}
+
+float Panel::build_playback(float x, float y, float w) {
+  const float inner = std::max(80.0f, w - 2 * ui::kPad);
+  Flow f;
+  f.begin(x + ui::kPad, y + kCardTop + kCardTitleH + 8.0f, inner, ui::kGap);
+
+  btn_start_ = f.place(150.0f, kFieldH);
+  btn_sync_play_ = f.place(150.0f, kFieldH);
+  btn_back_ = f.place(96.0f, kFieldH);
+  btn_fwd_ = f.place(96.0f, kFieldH);
+
+  // labelled fields: the label is drawn above the field, so the item is as tall as both
+  const float labelled = kLabelH + kRowGap + kFieldH;
+  const ui::RectF jit = f.place(120.0f, labelled);
+  field_jump_ = {jit.x, jit.y + kLabelH + kRowGap, jit.w, kFieldH};
+  const ui::RectF sit = f.place(120.0f, labelled);
+  field_speed_ = {sit.x, sit.y + kLabelH + kRowGap, sit.w, kFieldH};
+
+  toggle_lock_ = f.place(std::min(260.0f, inner), kFieldH);
+
+  card_playback_ = {x, y, w, kCardTop + kCardTitleH + 8.0f + f.height() + 12.0f};
+  return card_playback_.h;
+}
+
+float Panel::build_timelines(float x, float y, float w, float min_h) {
+  const float inner = std::max(80.0f, w - 2 * ui::kPad);
+  const float lw = std::min(58.0f, inner * 0.3f);
+  const float tw = 92.0f;
+  float cy = y + kCardTop + kCardTitleH + 8.0f;
+
+  for (int i = 0; i < 3; ++i) {
+    const float beside = inner - lw - tw - ui::kGap;
+    if (beside >= 110.0f) {
+      tl_[i].label = {x + ui::kPad, cy, lw, kLabelH};
+      tl_[i].bar = {x + ui::kPad + lw, cy + 2.0f, beside, 20.0f};
+      tl_[i].time = {x + ui::kPad + lw + beside + ui::kGap, cy - 1.0f, tw, kLabelH + 2.0f};
+      cy += 38.0f;
+    } else {
+      // no room for the readout beside the bar: it goes underneath
+      const float bar_w = std::max(60.0f, inner - lw);
+      tl_[i].label = {x + ui::kPad, cy, lw, kLabelH};
+      tl_[i].bar = {x + ui::kPad + lw, cy + 2.0f, bar_w, 20.0f};
+      tl_[i].time = {x + ui::kPad + lw, cy + 26.0f, bar_w, kLabelH};
+      cy += 50.0f;
     }
-    src_hint_ = {card_videos_.x + pad, ry + 2.0f, card_videos_.w - 2 * pad, 18.0f};
   }
 
-  // playback, with the buttons that load and start the videos in the same group
-  {
-    card_playback_ = card(title + row + 8.0f + field_row + 10.0f);
-    float ry = card_playback_.y + title;
-    btn_start_ = {card_playback_.x + pad, ry, 190.0f, row};
-    ry += row + 8.0f;
-    btn_sync_play_ = {card_playback_.x + pad, ry, 150.0f, row};
-    btn_back_ = {btn_sync_play_.x + btn_sync_play_.w + gap, ry, 96.0f, row};
-    btn_fwd_ = {btn_back_.x + btn_back_.w + gap, ry, 96.0f, row};
-    ry += row + 8.0f;
-    field_jump_ = {card_playback_.x + pad, ry + lbl + 4.0f, 120.0f, row};
-    field_speed_ = {field_jump_.x + 120.0f + gap, field_jump_.y, 120.0f, row};
-    const float lx = field_speed_.x + 120.0f + gap;
-    toggle_lock_ = {lx, ry, card_playback_.x + card_playback_.w - pad - lx, field_row};
-  }
+  cy += 6.0f;
+  field_goto_ = {x + ui::kPad, cy + kLabelH + kRowGap, std::min(220.0f, inner), kFieldH};
+  cy += kLabelH + kRowGap + kFieldH + 12.0f;
 
-  // timelines, with the alignment offset in the same group
-  {
-    card_timelines_ = card(title + 3 * 36.0f + 6.0f + field_row + 8.0f + field_row + 10.0f);
-    float ry = card_timelines_.y + title;
-    const float lw = 62.0f, tw = 96.0f;
-    for (int i = 0; i < 3; ++i) {
-      tl_[i].label = {card_timelines_.x + pad, ry, lw, lbl};
-      tl_[i].bar = {card_timelines_.x + pad + lw, ry + 2.0f,
-                    card_timelines_.w - 2 * pad - lw - tw - gap, 20.0f};
-      tl_[i].time = {tl_[i].bar.x + tl_[i].bar.w + gap, ry - 1.0f, tw, lbl + 2.0f};
-      ry += 36.0f;
-    }
-    field_goto_ = {card_timelines_.x + pad, ry + 6.0f + lbl + 4.0f, 220.0f, row};
-    const float oy = field_goto_.y + row + 12.0f;
-    field_offset_ = {card_timelines_.x + pad, oy + lbl + 4.0f, 200.0f, row};
-    lbl_offset_ = {field_offset_.x + 200.0f + gap, field_offset_.y + 7.0f,
-                   card_timelines_.w - 2 * pad - 200.0f - gap, lbl};
-  }
+  // the offset field, then its readout on the line below, so neither can cover the other
+  field_offset_ = {x + ui::kPad, cy + kLabelH + kRowGap, std::min(200.0f, inner), kFieldH};
+  lbl_offset_ = {x + ui::kPad, field_offset_.y + kFieldH + 6.0f, inner, kLabelH};
+  cy = lbl_offset_.y + kLabelH + 12.0f;
 
-  // volume
-  {
-    card_volume_ = card(title + 3 * 36.0f + 10.0f);
-    float vy = card_volume_.y + title;
-    const float lw = 96.0f;
-    for (int i = 0; i < 3; ++i) {
-      vol_label_[i] = {card_volume_.x + pad, vy, lw, lbl};
-      vol_slider_[i] = {card_volume_.x + pad + lw, vy + 4.0f,
-                        card_volume_.w - 2 * pad - lw - gap, 20.0f};
-      vy += 36.0f;
+  const float needed = cy - y;
+  card_timelines_ = {x, y, w, std::max(needed, min_h)};
+  return card_timelines_.h;
+}
+
+float Panel::build_volume(float x, float y, float w) {
+  const float inner = std::max(80.0f, w - 2 * ui::kPad);
+  const float lw = std::min(96.0f, inner * 0.4f);
+  float cy = y + kCardTop + kCardTitleH + 8.0f;
+
+  for (int i = 0; i < 3; ++i) {
+    const float sw = inner - lw - ui::kGap;
+    if (sw >= 90.0f) {
+      vol_label_[i] = {x + ui::kPad, cy, lw, kLabelH};
+      vol_slider_[i] = {x + ui::kPad + lw, cy + 4.0f, sw, 20.0f};
+      cy += 34.0f;
+    } else {
+      vol_label_[i] = {x + ui::kPad, cy, inner, kLabelH};
+      vol_slider_[i] = {x + ui::kPad, cy + kLabelH, std::max(60.0f, inner), 20.0f};
+      cy += 40.0f;
     }
   }
 
-  // windows
-  {
-    card_windows_ = card(title + row + 8.0f + 18.0f + 10.0f);
-    const float wy = card_windows_.y + title;
-    const float half = (card_windows_.w - 2 * pad - gap) / 2.0f;
-    btn_arrange_ = {card_windows_.x + pad, wy, half, row};
-    btn_pip_ = {btn_arrange_.x + half + gap, wy, half, row};
+  card_volume_ = {x, y, w, cy - y + 4.0f};
+  return card_volume_.h;
+}
+
+float Panel::build_windows(float x, float y, float w, bool with_shortcuts) {
+  const float inner = std::max(80.0f, w - 2 * ui::kPad);
+  Flow f;
+  f.begin(x + ui::kPad, y + kCardTop + kCardTitleH + 8.0f, inner, ui::kGap);
+  btn_arrange_ = f.place(std::min(220.0f, inner), kFieldH);
+  btn_pip_ = f.place(std::min(200.0f, inner), kFieldH);
+
+  // the hint is anchored to the bottom of the card by the draw, so reserve its room here
+  card_windows_ = {x, y, w, kCardTop + kCardTitleH + 8.0f + f.height() + 34.0f + 12.0f};
+  float used = card_windows_.h + ui::kGap;
+
+  if (with_shortcuts) {
+    const float rows = 4 * 22.0f;
+    card_shortcuts_ = {x, y + used, w, kCardTop + kCardTitleH + 8.0f + rows + 12.0f};
+    used += card_shortcuts_.h;
+  } else {
+    card_shortcuts_ = {};
   }
-  card_shortcuts_ = {};  // a tab convenience, not part of the stacked column
+  return used - ui::kGap;
+}
 
-  // the settings groups are not part of the column: they live on the settings page,
-  // reached from the title bar
-  card_appearance_ = {};
-  card_status_ = {};
-  card_tabs_ = {};
-  card_about_ = {};
+float Panel::build_settings_groups(float x, float y, float w, bool with_about) {
+  const float inner = std::max(80.0f, w - 2 * ui::kPad);
+  const float row = 34.0f;
+  float cy = y;
 
-  content_h_ = (y - gap + scroll) - c.y + 8.0f;
+  ui::RectF* toggles[3] = {&toggle_dark_, &toggle_readout_, &toggle_tabs_};
+  ui::RectF* cards[3] = {&card_appearance_, &card_status_, &card_tabs_};
+  for (int i = 0; i < 3; ++i) {
+    *cards[i] = {x, cy, w, kCardTop + kCardTitleH + 8.0f + row + 12.0f};
+    *toggles[i] = {x + ui::kPad, cy + kCardTop + kCardTitleH + 8.0f, inner, row};
+    cy += cards[i]->h + ui::kGap;
+  }
+
+  if (with_about) {
+    card_about_ = {x, cy, w, kCardTop + kCardTitleH + 8.0f + 3 * 24.0f + 12.0f};
+    cy += card_about_.h;
+  } else {
+    card_about_ = {};
+  }
+  return cy - y;
+}
+
+void Panel::layout_stacked(const ui::RectF& c, float scroll) {
+  float y = c.y - scroll;
+  y += build_videos(c.x, y, c.w) + ui::kGap;
+  y += build_playback(c.x, y, c.w) + ui::kGap;
+  y += build_timelines(c.x, y, c.w, 0.0f) + ui::kGap;
+  y += build_volume(c.x, y, c.w) + ui::kGap;
+  y += build_windows(c.x, y, c.w, false);
+  // appearance, the status bar, the arrangement and about live on the settings page
+  card_appearance_ = card_status_ = card_tabs_ = card_about_ = {};
+  content_h_ = y + scroll - c.y;
 }
 
 void Panel::layout_sources(const ui::RectF& c) {
-  Column col{c.x, c.w, c.y, ui::kGap};
-  card_videos_ = col.next(std::max(210.0f, c.h));
-  // The buttons that load and start the videos live in the playback group, as they do in
-  // the column arrangement.
-
-  const float label_w = 74.0f;
-  const float browse_w = 92.0f;
-  float ry = card_videos_.y + kCardTop + kCardTitleH + 8.0f;
-  for (int i = 0; i < 2; ++i) {
-    const float fx = card_videos_.x + ui::kPad + label_w;
-    const float fw = card_videos_.w - 2 * ui::kPad - label_w - browse_w - ui::kGap;
-    src_row_[i].label = {card_videos_.x + ui::kPad, ry, label_w, kLabelH};
-    src_row_[i].field = {fx, ry + kLabelH + kRowGap, fw, kFieldH};
-    src_row_[i].browse = {fx + fw + ui::kGap, ry + kLabelH + kRowGap, browse_w, kFieldH};
-    ry += kFieldRowH + kBlockGap;
-  }
-  src_hint_ = {card_videos_.x + ui::kPad, card_videos_.y + card_videos_.h - 30.0f,
-               card_videos_.w - 2 * ui::kPad, 18.0f};
-
+  // The buttons that load and start the videos belong to the playback group, so this tab is
+  // the two video fields and the hint, and the card sizes itself to them.
+  build_videos(c.x, c.y, c.w);
+  card_playback_ = card_timelines_ = card_volume_ = card_windows_ = card_shortcuts_ = {};
 }
 
 void Panel::layout_sync(const ui::RectF& c) {
-  const float playback_h =
-      kCardTop + kCardTitleH + 8.0f + kFieldH + 8.0f + kFieldRowH + 12.0f;
-  // The offset lives in this card, so it has to be tall enough for it.
-  const float timelines_min = kCardTop + kCardTitleH + 8.0f + 3 * 40.0f + 4.0f +
-                              kFieldRowH + 8.0f + kFieldRowH + 12.0f;
-  const float timelines_h = std::max(timelines_min, c.h - playback_h - ui::kGap);
-
-  Column col{c.x, c.w, c.y, ui::kGap};
-  card_playback_ = col.next(playback_h);
-  card_timelines_ = col.next(timelines_h);
-
-  float ry = card_playback_.y + kCardTop + kCardTitleH + 8.0f;
-  btn_start_ = {card_playback_.x + ui::kPad, ry, 190.0f, kFieldH};
-  ry += kFieldH + 8.0f;
-  btn_sync_play_ = {card_playback_.x + ui::kPad, ry, 150.0f, kFieldH};
-  btn_back_ = {btn_sync_play_.x + btn_sync_play_.w + ui::kGap, ry, 96.0f, kFieldH};
-  btn_fwd_ = {btn_back_.x + btn_back_.w + ui::kGap, ry, 96.0f, kFieldH};
-  ry += kFieldH + 8.0f;
-  const float fw = 120.0f;
-  field_jump_ = {card_playback_.x + ui::kPad, ry + kLabelH + kRowGap, fw, kFieldH};
-  field_speed_ = {field_jump_.x + fw + ui::kGap, field_jump_.y, fw, kFieldH};
-  const float lock_x = field_speed_.x + fw + ui::kGap;
-  toggle_lock_ = {lock_x, ry, card_playback_.x + card_playback_.w - ui::kPad - lock_x,
-                  kFieldRowH};
-
-  ry = card_timelines_.y + kCardTop + kCardTitleH + 8.0f;
-  const float lbl_w = 62.0f;
-  const float time_w = 96.0f;
-  for (int i = 0; i < 3; ++i) {
-    tl_[i].label = {card_timelines_.x + ui::kPad, ry, lbl_w, kLabelH};
-    tl_[i].bar = {card_timelines_.x + ui::kPad + lbl_w, ry + 2.0f,
-                  card_timelines_.w - 2 * ui::kPad - lbl_w - time_w - ui::kGap, 20.0f};
-    tl_[i].time = {tl_[i].bar.x + tl_[i].bar.w + ui::kGap, ry - 1.0f, time_w, kLabelH + 2};
-    ry += 40.0f;
-  }
-  ry += 4.0f;
-  field_goto_ = {card_timelines_.x + ui::kPad, ry + kLabelH + kRowGap, 220.0f, kFieldH};
-
-  // the typed offset, inside the timelines card, under the go-to field
-  {
-    const float oy = field_goto_.y + kFieldH + 12.0f;
-    field_offset_ = {card_timelines_.x + ui::kPad, oy + kLabelH + kRowGap, 200.0f, kFieldH};
-    lbl_offset_ = {field_offset_.x + 200.0f + ui::kGap, oy + kLabelH + kRowGap + 9.0f,
-                   card_timelines_.w - 2 * ui::kPad - 200.0f - ui::kGap, kLabelH};
-  }
+  const float ph = build_playback(c.x, c.y, c.w);
+  const float ty = c.y + ph + ui::kGap;
+  // the timelines card fills what is left, but never less than its contents need
+  build_timelines(c.x, ty, c.w, std::max(0.0f, c.h - ph - ui::kGap));
+  card_videos_ = card_volume_ = card_windows_ = card_shortcuts_ = {};
 }
 
 void Panel::layout_windows(const ui::RectF& c) {
-  const float windows_h = kCardTop + kCardTitleH + 8.0f + kFieldH + 8.0f + 18.0f + 12.0f;
-  const float shortcuts_h = kCardTop + kCardTitleH + 8.0f + 4 * 20.0f + 12.0f;
-  const float volume_h = std::max(190.0f, c.h - windows_h - shortcuts_h - 2 * ui::kGap);
-
-  Column col{c.x, c.w, c.y, ui::kGap};
-  card_windows_ = col.next(windows_h);
-  card_volume_ = col.next(volume_h);
-  card_shortcuts_ = col.next(shortcuts_h);
-
-  const float wy = card_windows_.y + kCardTop + kCardTitleH + 8.0f;
-  const float half = (card_windows_.w - 2 * ui::kPad - ui::kGap) / 2.0f;
-  btn_arrange_ = {card_windows_.x + ui::kPad, wy, half, kFieldH};
-  btn_pip_ = {btn_arrange_.x + half + ui::kGap, wy, half, kFieldH};
-
-  float vy = card_volume_.y + kCardTop + kCardTitleH + 8.0f;
-  const float vlbl_w = 96.0f;
-  for (int i = 0; i < 3; ++i) {
-    vol_label_[i] = {card_volume_.x + ui::kPad, vy, vlbl_w, kLabelH};
-    vol_slider_[i] = {card_volume_.x + ui::kPad + vlbl_w, vy + 4.0f,
-                      card_volume_.w - 2 * ui::kPad - vlbl_w - ui::kGap, 20.0f};
-    vy += 40.0f;
-  }
+  const float wh = build_windows(c.x, c.y, c.w, true);
+  const float vy = c.y + wh + ui::kGap;
+  // the volume card takes the rest of the tab
+  const float vh = build_volume(c.x, vy, c.w);
+  card_volume_.h = std::max(vh, c.h - wh - ui::kGap);
+  card_videos_ = card_playback_ = card_timelines_ = {};
 }
 
 void Panel::layout_settings(const ui::RectF& c) {
-  const float toggle_h = kCardTop + kCardTitleH + 8.0f + 32.0f + 12.0f;
-  const float about_h = std::max(150.0f, c.h - 3 * toggle_h - 3 * ui::kGap);
-
-  Column col{c.x, c.w, c.y, ui::kGap};
-  card_appearance_ = col.next(toggle_h);
-  card_status_ = col.next(toggle_h);
-  card_tabs_ = col.next(toggle_h);
-  card_about_ = col.next(about_h);
-
-  const float ay = card_appearance_.y + kCardTop + kCardTitleH + 8.0f;
-  toggle_dark_ = {card_appearance_.x + ui::kPad, ay, card_appearance_.w - 2 * ui::kPad,
-                  32.0f};
-  const float sy = card_status_.y + kCardTop + kCardTitleH + 8.0f;
-  toggle_readout_ = {card_status_.x + ui::kPad, sy, card_status_.w - 2 * ui::kPad, 32.0f};
-  const float ty = card_tabs_.y + kCardTop + kCardTitleH + 8.0f;
-  toggle_tabs_ = {card_tabs_.x + ui::kPad, ty, card_tabs_.w - 2 * ui::kPad, 32.0f};
+  const float h = build_settings_groups(c.x, c.y, c.w, true);
+  card_about_.h = std::max(card_about_.h, c.h - (h - card_about_.h));
+  card_videos_ = card_playback_ = card_timelines_ = card_volume_ = card_windows_ = {};
+  card_shortcuts_ = {};
 }
 
 // ---------------------------------------------------------------------------
@@ -709,27 +702,8 @@ void Panel::draw_settings_page() {
 }
 
 void Panel::layout_settings_page(const ui::RectF& c) {
-  const float toggle_h = kCardTop + kCardTitleH + 8.0f + 32.0f + 12.0f;
-  float y = c.y + 6.0f;
-  auto card = [&](float h) {
-    ui::RectF r{c.x, y, c.w, h};
-    y += h + ui::kGap;
-    return r;
-  };
-
-  card_appearance_ = card(toggle_h);
-  toggle_dark_ = {card_appearance_.x + ui::kPad, card_appearance_.y + kCardTop + kCardTitleH + 8.0f,
-                  card_appearance_.w - 2 * ui::kPad, 32.0f};
-
-  card_status_ = card(toggle_h);
-  toggle_readout_ = {card_status_.x + ui::kPad, card_status_.y + kCardTop + kCardTitleH + 8.0f,
-                     card_status_.w - 2 * ui::kPad, 32.0f};
-
-  card_tabs_ = card(toggle_h);
-  toggle_tabs_ = {card_tabs_.x + ui::kPad, card_tabs_.y + kCardTop + kCardTitleH + 8.0f,
-                  card_tabs_.w - 2 * ui::kPad, 32.0f};
-
-  card_about_ = card(std::max(150.0f, c.y + c.h - y - 4.0f));
+  build_settings_groups(c.x, c.y + 6.0f, c.w, true);
+  card_videos_ = card_playback_ = card_timelines_ = card_volume_ = card_windows_ = {};
   card_shortcuts_ = {};
 }
 

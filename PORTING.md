@@ -164,6 +164,18 @@ the window as mouse moves but the button messages did not land), so clicking is 
 and was not exercised. The Ctrl+1..4 and Ctrl+Tab shortcuts are implemented on the same
 path and are likewise unverified.
 
+**Size a group from its contents, and give each group one builder.** Two copies of the same
+card arithmetic (one in the column, one in the tabs) drift apart, and a card that is shorter
+than its contents draws its last row over the next card. So each group has a single builder
+that places its contents with a wrapping flow and returns the height it needs; the card is
+sized from that, and both arrangements call the same builder. The flow moves an item to the
+next line when it does not fit, so a narrow window re-wraps instead of overlapping.
+
+**Verify it from the gaps.** The gap between two cards is a full-width band of the window
+background. If a row spills out of a card, that band is broken - which is exactly what the
+bug looked like. Count non-background pixels inside the bands at several window widths; the
+scrollbar legitimately floats over them, so skip its strip or it reads as a false positive.
+
 ## Two faults worth remembering
 
 **Every theme token must be set where the theme is built.** The accent was applied only in
