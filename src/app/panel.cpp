@@ -63,7 +63,7 @@ constexpr float kFieldRowH = kLabelH + kRowGap + kFieldH;
 enum Id {
   ID_TAB0 = 10, ID_TAB1, ID_TAB2, ID_TAB3,
   ID_SRC_A = 100, ID_SRC_A_BROWSE, ID_SRC_B, ID_SRC_B_BROWSE,
-  ID_START, ID_PLAY,
+  ID_START,
   ID_SYNC_PLAY, ID_BACK, ID_FWD, ID_JUMP, ID_SPEED, ID_LOCK,
   ID_BAR_MOVIE, ID_BAR_REACTION, ID_BAR_MASTER, ID_GOTO, ID_OFFSET,
   ID_ARRANGE, ID_PIP,
@@ -371,10 +371,9 @@ void Panel::layout_stacked(const ui::RectF& c, float scroll) {
 
   // playback, with the buttons that load and start the videos in the same group
   {
-    card_playback_ = card(title + row + 8.0f + row + 8.0f + field_row + 10.0f);
+    card_playback_ = card(title + row + 8.0f + field_row + 10.0f);
     float ry = card_playback_.y + title;
     btn_start_ = {card_playback_.x + pad, ry, 190.0f, row};
-    btn_play_ = {btn_start_.x + btn_start_.w + gap, ry, 150.0f, row};
     ry += row + 8.0f;
     btn_sync_play_ = {card_playback_.x + pad, ry, 150.0f, row};
     btn_back_ = {btn_sync_play_.x + btn_sync_play_.w + gap, ry, 96.0f, row};
@@ -404,7 +403,6 @@ void Panel::layout_stacked(const ui::RectF& c, float scroll) {
     lbl_offset_ = {field_offset_.x + 200.0f + gap, field_offset_.y + 7.0f,
                    card_timelines_.w - 2 * pad - 200.0f - gap, lbl};
   }
-  card_align_ = {};  // the offset lives in the timelines group now
 
   // volume
   {
@@ -444,7 +442,6 @@ void Panel::layout_sources(const ui::RectF& c) {
   card_videos_ = col.next(std::max(210.0f, c.h));
   // The buttons that load and start the videos live in the playback group, as they do in
   // the column arrangement.
-  card_actions_ = {};
 
   const float label_w = 74.0f;
   const float browse_w = 92.0f;
@@ -464,7 +461,7 @@ void Panel::layout_sources(const ui::RectF& c) {
 
 void Panel::layout_sync(const ui::RectF& c) {
   const float playback_h =
-      kCardTop + kCardTitleH + 8.0f + kFieldH + 8.0f + kFieldH + 8.0f + kFieldRowH + 12.0f;
+      kCardTop + kCardTitleH + 8.0f + kFieldH + 8.0f + kFieldRowH + 12.0f;
   // The offset lives in this card, so it has to be tall enough for it.
   const float timelines_min = kCardTop + kCardTitleH + 8.0f + 3 * 40.0f + 4.0f +
                               kFieldRowH + 8.0f + kFieldRowH + 12.0f;
@@ -473,11 +470,9 @@ void Panel::layout_sync(const ui::RectF& c) {
   Column col{c.x, c.w, c.y, ui::kGap};
   card_playback_ = col.next(playback_h);
   card_timelines_ = col.next(timelines_h);
-  card_align_ = {};
 
   float ry = card_playback_.y + kCardTop + kCardTitleH + 8.0f;
   btn_start_ = {card_playback_.x + ui::kPad, ry, 190.0f, kFieldH};
-  btn_play_ = {btn_start_.x + btn_start_.w + ui::kGap, ry, 150.0f, kFieldH};
   ry += kFieldH + 8.0f;
   btn_sync_play_ = {card_playback_.x + ui::kPad, ry, 150.0f, kFieldH};
   btn_back_ = {btn_sync_play_.x + btn_sync_play_.w + ui::kGap, ry, 96.0f, kFieldH};
@@ -735,7 +730,6 @@ void Panel::layout_settings_page(const ui::RectF& c) {
                   card_tabs_.w - 2 * ui::kPad, 32.0f};
 
   card_about_ = card(std::max(150.0f, c.y + c.h - y - 4.0f));
-  card_align_ = {};
   card_shortcuts_ = {};
 }
 
@@ -820,11 +814,6 @@ void Panel::draw_sync_tab() {
   if (ui_.button(ID_START, btn_start_, started_ ? L"Reload both" : L"Start",
                  ui::ButtonStyle::Accent)) {
     start_sources();
-  }
-  if (ui_.button(ID_PLAY, btn_play_, playing_ ? L"Pause" : L"Play",
-                 playing_ ? ui::ButtonStyle::Standard : ui::ButtonStyle::Accent,
-                 started_)) {
-    toggle_play();
   }
   if (ui_.button(ID_SYNC_PLAY, btn_sync_play_, playing_ ? L"Pause" : L"Play",
                  playing_ ? ui::ButtonStyle::Standard : ui::ButtonStyle::Accent,

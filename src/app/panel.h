@@ -137,7 +137,7 @@ class Panel {
   ui::RectF tab_rect_[kTabCount];
 
   // sources
-  ui::RectF card_videos_, card_actions_, btn_start_, btn_play_, src_hint_;
+  ui::RectF card_videos_, btn_start_, src_hint_;
   SourceRow src_row_[2];
 
   // sync
