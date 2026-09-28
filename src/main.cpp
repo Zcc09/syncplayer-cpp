@@ -28,6 +28,8 @@ constexpr DWORD kDwmWindowCornerPreference = 33;
 constexpr DWORD kDwmSystemBackdropType = 38;
 constexpr DWORD kDwmBorderColor = 34;
 constexpr DWORD kDwmColorNone = 0xFFFFFFFE;  // DWMWA_COLOR_NONE
+constexpr DWORD kDwmNcRenderingPolicy = 2;
+constexpr int kDwmNcRenderingDisabled = 2;
 constexpr int kDwmCornerRound = 2;       // DWMWCP_ROUND
 constexpr int kDwmBackdropMainWindow = 2;  // DWMSBT_MAINWINDOW (Mica)
 
@@ -67,6 +69,11 @@ void apply_dwm(HWND hwnd, bool dark) {
   // shows as a line around the program when it is not focused. Ask for none.
   const DWORD border = kDwmColorNone;
   DwmSetWindowAttribute(hwnd, kDwmBorderColor, &border, sizeof border);
+  // A window that keeps WS_THICKFRAME still has its non-client area rendered. Turning that
+  // off removes the frame line DWM draws around it; the resize borders are handled by
+  // WM_NCHITTEST, so nothing is lost.
+  const int nc = kDwmNcRenderingDisabled;
+  DwmSetWindowAttribute(hwnd, kDwmNcRenderingPolicy, &nc, sizeof nc);
 }
 
 LRESULT hit_test(HWND hwnd, POINT screen_pt) {
@@ -99,6 +106,11 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_NCCALCSIZE:
       if (wp) return 0;  // the client area covers the whole window
       break;
+
+    case WM_NCACTIVATE:
+      // Do not let the default handler paint the inactive frame: with the frame removed
+      // this shows up as a border around the window whenever it is not focused.
+      return TRUE;
 
     case WM_NCHITTEST: {
       const LRESULT r = hit_test(hwnd, POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)});
@@ -258,6 +270,16 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       InvalidateRect(hwnd, nullptr, FALSE);
       return 0;
     }
+
+    case WM_ACTIVATE:
+      // Focus changes can make DWM redraw the frame; re-assert that there is none.
+      if (g_panel) {
+        const DWORD none = kDwmColorNone;
+        DwmSetWindowAttribute(hwnd, kDwmBorderColor, &none, sizeof none);
+        const int off = kDwmNcRenderingDisabled;
+        DwmSetWindowAttribute(hwnd, kDwmNcRenderingPolicy, &off, sizeof off);
+      }
+      break;
 
     case WM_TIMER:
       if (wp == kSyncTimer && g_panel) {

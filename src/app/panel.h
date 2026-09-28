@@ -107,6 +107,7 @@ class Panel {
   void relayout();
   // The stacked column, positioned for a given scroll offset.
   void layout_stacked(const ui::RectF& c, float scroll);
+  void layout_settings_page(const ui::RectF& c);
   void layout_sources(const ui::RectF& c);
   void layout_sync(const ui::RectF& c);
   void layout_windows(const ui::RectF& c);
@@ -116,6 +117,7 @@ class Panel {
   void draw_title_bar();
   void draw_tabs();
   void draw_stacked();
+  void draw_settings_page();
   void draw_scrollbar();
   void draw_sources_tab();
   void draw_sync_tab();
@@ -130,7 +132,8 @@ class Panel {
   Tab tab_ = Tab::Sources;
 
   // chrome
-  ui::RectF title_bar_, btn_min_, btn_close_, tab_strip_, content_, status_strip_;
+  ui::RectF title_bar_, btn_min_, btn_close_, btn_settings_, tab_strip_, content_,
+      status_strip_;
   ui::RectF tab_rect_[kTabCount];
 
   // sources
@@ -158,6 +161,7 @@ class Panel {
   bool scroll_dragging_ = false;
   float scroll_drag_grab_ = 0.0f;
   bool tabs_mode_ = false;
+  bool settings_page_ = false;  // the column's settings page is showing
 
   Config cfg_;
   MpvProcess movie_;

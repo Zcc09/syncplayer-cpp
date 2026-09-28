@@ -177,6 +177,16 @@ tokens a control's visibility depends on have Fluent defaults.
 
 **DWM draws a border around a frame-less window.** It sits outside the client area, so
 `PrintWindow` never showed it and the pixel checks looked clean while a line was visible
+around the program. `DWMWA_BORDER_COLOR` with `DWMWA_COLOR_NONE` is not enough on its
+own: a window that keeps `WS_THICKFRAME` still has its non-client area rendered. It also
+needs `DWMWA_NCRENDERING_POLICY` set to `DWMNCRP_DISABLED`, a `WM_NCACTIVATE` handler
+that returns `TRUE` without passing the message on, and the border colour re-asserted on
+`WM_ACTIVATE`, because focus changes make DWM redraw the frame. To check it, print the
+colour at 1..26 pixels outside each edge: a border is a thin bright line with different
+colours beyond it, while background wallpaper is consistent.
+
+**DWM draws a border around a frame-less window.** It sits outside the client area, so
+`PrintWindow` never showed it and the pixel checks looked clean while a line was visible
 around the program. `DWMWA_BORDER_COLOR` with `DWMWA_COLOR_NONE` removes it. Checking
 anything outside the client area means capturing the screen around the window instead.
 

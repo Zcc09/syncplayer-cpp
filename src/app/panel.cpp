@@ -69,7 +69,7 @@ enum Id {
   ID_ARRANGE, ID_PIP,
   ID_VOL_A, ID_VOL_B, ID_VOL_M,
   ID_DARK, ID_READOUT, ID_TABS,
-  ID_MIN, ID_CLOSE,
+  ID_SETTINGS, ID_MIN, ID_CLOSE,
 };
 
 const wchar_t* const kTabNames[kTabCount] = {L"Sources", L"Sync", L"Windows",
@@ -319,6 +319,13 @@ void Panel::layout(float w, float h) {
   content_ = {ui::kPad, content_top, w - 2 * ui::kPad,
               std::max(120.0f, status_strip_.y - content_top - 12.0f)};
 
+  if (settings_page_) {
+    layout_settings_page(content_);
+    scroll_max_ = 0.0f;
+    scroll_ = 0.0f;
+    return;
+  }
+
   // Measure first, then place: the height of the column decides how far it can scroll.
   layout_stacked(content_, 0.0f);
   scroll_max_ = std::max(0.0f, content_h_ - content_.h);
@@ -362,18 +369,13 @@ void Panel::layout_stacked(const ui::RectF& c, float scroll) {
     src_hint_ = {card_videos_.x + pad, ry + 2.0f, card_videos_.w - 2 * pad, 18.0f};
   }
 
-  // get started
+  // playback, with the buttons that load and start the videos in the same group
   {
-    card_actions_ = card(title + row + 8.0f + 18.0f + 10.0f);
-    const float inner = card_actions_.y + title;
-    btn_start_ = {card_actions_.x + pad, inner, 190.0f, row};
-    btn_play_ = {btn_start_.x + btn_start_.w + gap, inner, 150.0f, row};
-  }
-
-  // playback
-  {
-    card_playback_ = card(title + row + 8.0f + field_row + 10.0f);
+    card_playback_ = card(title + row + 8.0f + row + 8.0f + field_row + 10.0f);
     float ry = card_playback_.y + title;
+    btn_start_ = {card_playback_.x + pad, ry, 190.0f, row};
+    btn_play_ = {btn_start_.x + btn_start_.w + gap, ry, 150.0f, row};
+    ry += row + 8.0f;
     btn_sync_play_ = {card_playback_.x + pad, ry, 150.0f, row};
     btn_back_ = {btn_sync_play_.x + btn_sync_play_.w + gap, ry, 96.0f, row};
     btn_fwd_ = {btn_back_.x + btn_back_.w + gap, ry, 96.0f, row};
@@ -384,9 +386,9 @@ void Panel::layout_stacked(const ui::RectF& c, float scroll) {
     toggle_lock_ = {lx, ry, card_playback_.x + card_playback_.w - pad - lx, field_row};
   }
 
-  // timelines
+  // timelines, with the alignment offset in the same group
   {
-    card_timelines_ = card(title + 3 * 36.0f + 6.0f + field_row + 10.0f);
+    card_timelines_ = card(title + 3 * 36.0f + 6.0f + field_row + 8.0f + field_row + 10.0f);
     float ry = card_timelines_.y + title;
     const float lw = 62.0f, tw = 96.0f;
     for (int i = 0; i < 3; ++i) {
@@ -397,16 +399,12 @@ void Panel::layout_stacked(const ui::RectF& c, float scroll) {
       ry += 36.0f;
     }
     field_goto_ = {card_timelines_.x + pad, ry + 6.0f + lbl + 4.0f, 220.0f, row};
-  }
-
-  // alignment
-  {
-    card_align_ = card(title + field_row + 8.0f + 18.0f + 10.0f);
-    const float ay = card_align_.y + title;
-    field_offset_ = {card_align_.x + pad, ay + lbl + 4.0f, 200.0f, row};
+    const float oy = field_goto_.y + row + 12.0f;
+    field_offset_ = {card_timelines_.x + pad, oy + lbl + 4.0f, 200.0f, row};
     lbl_offset_ = {field_offset_.x + 200.0f + gap, field_offset_.y + 7.0f,
-                   card_align_.w - 2 * pad - 200.0f - gap, lbl};
+                   card_timelines_.w - 2 * pad - 200.0f - gap, lbl};
   }
+  card_align_ = {};  // the offset lives in the timelines group now
 
   // volume
   {
@@ -431,34 +429,22 @@ void Panel::layout_stacked(const ui::RectF& c, float scroll) {
   }
   card_shortcuts_ = {};  // a tab convenience, not part of the stacked column
 
-  // settings
-  {
-    const float toggle_h = kCardTop + kCardTitleH + 8.0f + 32.0f + 12.0f;
-    card_appearance_ = card(toggle_h);
-    toggle_dark_ = {card_appearance_.x + pad, card_appearance_.y + title,
-                    card_appearance_.w - 2 * pad, 32.0f};
-
-    card_status_ = card(toggle_h);
-    toggle_readout_ = {card_status_.x + pad, card_status_.y + title,
-                       card_status_.w - 2 * pad, 32.0f};
-
-    card_tabs_ = card(toggle_h);
-    toggle_tabs_ = {card_tabs_.x + pad, card_tabs_.y + title,
-                    card_tabs_.w - 2 * pad, 32.0f};
-
-    card_about_ = card(kCardTop + kCardTitleH + 8.0f + 3 * 24.0f + 44.0f + 12.0f);
-  }
+  // the settings groups are not part of the column: they live on the settings page,
+  // reached from the title bar
+  card_appearance_ = {};
+  card_status_ = {};
+  card_tabs_ = {};
+  card_about_ = {};
 
   content_h_ = (y - gap + scroll) - c.y + 8.0f;
 }
 
 void Panel::layout_sources(const ui::RectF& c) {
-  const float actions_h = kCardTop + kCardTitleH + 8.0f + kFieldH + 8.0f + 18.0f + 12.0f;
-  const float videos_h = std::max(210.0f, c.h - actions_h - ui::kGap);
-
   Column col{c.x, c.w, c.y, ui::kGap};
-  card_videos_ = col.next(videos_h);
-  card_actions_ = col.next(actions_h);
+  card_videos_ = col.next(std::max(210.0f, c.h));
+  // The buttons that load and start the videos live in the playback group, as they do in
+  // the column arrangement.
+  card_actions_ = {};
 
   const float label_w = 74.0f;
   const float browse_w = 92.0f;
@@ -474,23 +460,25 @@ void Panel::layout_sources(const ui::RectF& c) {
   src_hint_ = {card_videos_.x + ui::kPad, card_videos_.y + card_videos_.h - 30.0f,
                card_videos_.w - 2 * ui::kPad, 18.0f};
 
-  const float inner = card_actions_.y + kCardTop + kCardTitleH + 8.0f;
-  btn_start_ = {card_actions_.x + ui::kPad, inner, 190.0f, kFieldH};
-  btn_play_ = {btn_start_.x + btn_start_.w + ui::kGap, inner, 150.0f, kFieldH};
 }
 
 void Panel::layout_sync(const ui::RectF& c) {
   const float playback_h =
-      kCardTop + kCardTitleH + 8.0f + kFieldH + 8.0f + kFieldRowH + 12.0f;
-  const float align_h = kCardTop + kCardTitleH + 8.0f + kFieldRowH + 8.0f + 18.0f + 12.0f;
-  const float timelines_h = std::max(230.0f, c.h - playback_h - align_h - 2 * ui::kGap);
+      kCardTop + kCardTitleH + 8.0f + kFieldH + 8.0f + kFieldH + 8.0f + kFieldRowH + 12.0f;
+  // The offset lives in this card, so it has to be tall enough for it.
+  const float timelines_min = kCardTop + kCardTitleH + 8.0f + 3 * 40.0f + 4.0f +
+                              kFieldRowH + 8.0f + kFieldRowH + 12.0f;
+  const float timelines_h = std::max(timelines_min, c.h - playback_h - ui::kGap);
 
   Column col{c.x, c.w, c.y, ui::kGap};
   card_playback_ = col.next(playback_h);
   card_timelines_ = col.next(timelines_h);
-  card_align_ = col.next(align_h);
+  card_align_ = {};
 
   float ry = card_playback_.y + kCardTop + kCardTitleH + 8.0f;
+  btn_start_ = {card_playback_.x + ui::kPad, ry, 190.0f, kFieldH};
+  btn_play_ = {btn_start_.x + btn_start_.w + ui::kGap, ry, 150.0f, kFieldH};
+  ry += kFieldH + 8.0f;
   btn_sync_play_ = {card_playback_.x + ui::kPad, ry, 150.0f, kFieldH};
   btn_back_ = {btn_sync_play_.x + btn_sync_play_.w + ui::kGap, ry, 96.0f, kFieldH};
   btn_fwd_ = {btn_back_.x + btn_back_.w + ui::kGap, ry, 96.0f, kFieldH};
@@ -515,10 +503,13 @@ void Panel::layout_sync(const ui::RectF& c) {
   ry += 4.0f;
   field_goto_ = {card_timelines_.x + ui::kPad, ry + kLabelH + kRowGap, 220.0f, kFieldH};
 
-  const float ay = card_align_.y + kCardTop + kCardTitleH + 8.0f;
-  field_offset_ = {card_align_.x + ui::kPad, ay + kLabelH + kRowGap, 200.0f, kFieldH};
-  lbl_offset_ = {field_offset_.x + 200.0f + ui::kGap, ay + kLabelH + kRowGap + 9.0f,
-                 card_align_.w - 2 * ui::kPad - 200.0f - ui::kGap, kLabelH};
+  // the typed offset, inside the timelines card, under the go-to field
+  {
+    const float oy = field_goto_.y + kFieldH + 12.0f;
+    field_offset_ = {card_timelines_.x + ui::kPad, oy + kLabelH + kRowGap, 200.0f, kFieldH};
+    lbl_offset_ = {field_offset_.x + 200.0f + ui::kGap, oy + kLabelH + kRowGap + 9.0f,
+                   card_timelines_.w - 2 * ui::kPad - 200.0f - ui::kGap, kLabelH};
+  }
 }
 
 void Panel::layout_windows(const ui::RectF& c) {
@@ -611,6 +602,12 @@ void Panel::draw() {
       case Tab::Settings: draw_settings_tab(); break;
       default: break;
     }
+  } else if (settings_page_) {
+    renderer_.clip_push(content_);
+    ui_.set_active_area(content_);
+    draw_settings_page();
+    ui_.set_active_area(ui::RectF{});
+    renderer_.clip_pop();
   } else {
     // The column scrolls, so it is drawn inside a clip and only the visible part takes
     // input: a control that has scrolled out of sight must not answer a click.
@@ -640,6 +637,21 @@ void Panel::draw_title_bar() {
   const ui::RectF chip_rect{ui::kPad + 96.0f, 12.0f, chip_w, 16.0f};
   renderer_.fill_rounded(chip_rect, 8.0f, t.control);
   renderer_.text(chip, chip_rect, t.text_secondary, 12.0f, ui::TextAlign::Center);
+
+  // A settings button, in the column arrangement only: with tabs on, the Settings tab is
+  // already there.
+  if (!tabs_mode_) {
+    const float bw = 96.0f;
+    btn_settings_ = {btn_min_.x - bw - 8.0f, 8.0f, bw, 24.0f};
+    const std::wstring label = settings_page_ ? L"Back" : L"Settings";
+    // Standard, not Subtle: a borderless button in the title bar is hard to find.
+    if (ui_.button(ID_SETTINGS, btn_settings_, label, ui::ButtonStyle::Standard)) {
+      settings_page_ = !settings_page_;
+      scroll_ = 0.0f;
+      layout(width_ / (scale_dpi_ * scale_), height_ / (scale_dpi_ * scale_));
+      dirty_ = true;
+    }
+  }
 
   if (ui_.icon_button(ID_MIN, btn_min_, L"\u2500", t.text)) {
     ShowWindow(hwnd_, SW_MINIMIZE);
@@ -686,11 +698,45 @@ void Panel::draw_tabs() {
 
 void Panel::draw_stacked() {
   // The group functions are the same ones the tabs use; here they are stacked, and the
-  // layout pass has already placed every card for the current scroll offset.
+  // layout pass has already placed every card for the current scroll offset. The settings
+  // groups are not here: they are on the page the title bar's button opens.
   draw_sources_tab();
   draw_sync_tab();
   draw_windows_tab();
+}
+
+void Panel::draw_settings_page() {
+  const ui::Theme& t = renderer_.theme();
+  // The four settings groups, laid out down the page by layout_settings_page().
+  renderer_.text(L"Settings", {content_.x, content_.y - 34.0f, content_.w, 24.0f}, t.text,
+                 18.0f, ui::TextAlign::Left, ui::TextWeight::SemiBold);
   draw_settings_tab();
+}
+
+void Panel::layout_settings_page(const ui::RectF& c) {
+  const float toggle_h = kCardTop + kCardTitleH + 8.0f + 32.0f + 12.0f;
+  float y = c.y + 6.0f;
+  auto card = [&](float h) {
+    ui::RectF r{c.x, y, c.w, h};
+    y += h + ui::kGap;
+    return r;
+  };
+
+  card_appearance_ = card(toggle_h);
+  toggle_dark_ = {card_appearance_.x + ui::kPad, card_appearance_.y + kCardTop + kCardTitleH + 8.0f,
+                  card_appearance_.w - 2 * ui::kPad, 32.0f};
+
+  card_status_ = card(toggle_h);
+  toggle_readout_ = {card_status_.x + ui::kPad, card_status_.y + kCardTop + kCardTitleH + 8.0f,
+                     card_status_.w - 2 * ui::kPad, 32.0f};
+
+  card_tabs_ = card(toggle_h);
+  toggle_tabs_ = {card_tabs_.x + ui::kPad, card_tabs_.y + kCardTop + kCardTitleH + 8.0f,
+                  card_tabs_.w - 2 * ui::kPad, 32.0f};
+
+  card_about_ = card(std::max(150.0f, c.y + c.h - y - 4.0f));
+  card_align_ = {};
+  card_shortcuts_ = {};
 }
 
 void Panel::draw_scrollbar() {
@@ -765,7 +811,12 @@ void Panel::draw_sources_tab() {
   renderer_.text(L"Paste a link, or drop a file onto the window.", src_hint_,
                  t.text_secondary, 12.0f);
 
-  ui_.card(card_actions_, L"GET STARTED");
+}
+
+void Panel::draw_sync_tab() {
+  const ui::Theme& t = renderer_.theme();
+  ui_.card(card_playback_, L"PLAYBACK");
+
   if (ui_.button(ID_START, btn_start_, started_ ? L"Reload both" : L"Start",
                  ui::ButtonStyle::Accent)) {
     start_sources();
@@ -775,12 +826,6 @@ void Panel::draw_sources_tab() {
                  started_)) {
     toggle_play();
   }
-}
-
-void Panel::draw_sync_tab() {
-  const ui::Theme& t = renderer_.theme();
-  ui_.card(card_playback_, L"PLAYBACK");
-
   if (ui_.button(ID_SYNC_PLAY, btn_sync_play_, playing_ ? L"Pause" : L"Play",
                  playing_ ? ui::ButtonStyle::Standard : ui::ButtonStyle::Accent,
                  started_)) {
@@ -878,7 +923,7 @@ void Panel::draw_sync_tab() {
     goto_text_.clear();
   }
 
-  ui_.card(card_align_, L"ALIGNMENT");
+  // the offset belongs to the timelines group, so it is drawn above, in that card
   renderer_.text(L"Offset",
                  {field_offset_.x, field_offset_.y - kLabelH - kRowGap, field_offset_.w,
                   kLabelH},
@@ -887,7 +932,9 @@ void Panel::draw_sync_tab() {
                      true) == ui::FieldResult::Submitted) {
     apply_offset_from_field();
   }
-  renderer_.text(offset_label(), lbl_offset_, t.text_secondary, 12.0f);
+  if (lbl_offset_.h > 0.0f) {
+    renderer_.text(offset_label(), lbl_offset_, t.text_secondary, 12.0f);
+  }
 }
 
 void Panel::draw_windows_tab() {
@@ -956,6 +1003,7 @@ void Panel::draw_settings_tab() {
     if (ui_.toggle(ID_TABS, toggle_tabs_, as_tabs, L"Split the groups into tabs")) {
       tabs_mode_ = as_tabs;
       cfg_.ui_tabs = tabs_mode_;
+      settings_page_ = false;
       scroll_ = 0.0f;
       relayout();
       dirty_ = true;
