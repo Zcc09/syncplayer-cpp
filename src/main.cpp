@@ -92,12 +92,13 @@ LRESULT hit_test(HWND hwnd, POINT screen_pt) {
   if (top) return HTTOP;
   if (bottom) return HTBOTTOM;
 
-  // the title bar drags the window, except where its buttons are
+  // The title bar drags the window, except over its buttons. The panel decides, because it
+  // knows the title bar and button rects in design units and the divisor they were laid out
+  // with; comparing raw pixels against a guessed 40 here was wrong on a scaled display and ate
+  // part of the Settings button.
   POINT client = screen_pt;
   ScreenToClient(hwnd, &client);
-  if (client.y >= 0 && client.y < 40) {
-    if (client.x < rc.right - rc.left - 100) return HTCAPTION;
-  }
+  if (g_panel && g_panel->wants_caption(client.x, client.y)) return HTCAPTION;
   return HTCLIENT;
 }
 

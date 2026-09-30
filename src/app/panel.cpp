@@ -322,6 +322,8 @@ void Panel::set_sync_off(double off) {
 // layout
 // ---------------------------------------------------------------------------
 void Panel::layout(float w, float h) {
+  // Remember the divisor used to place the rects, so the mouse is converted with the same one.
+  input_scale_ = scale_dpi_ * scale_;
   title_bar_ = {0, 0, w, kTitleBarH};
   btn_close_ = {w - 46.0f, 0, 46.0f, kTitleBarH};
   btn_min_ = {w - 92.0f, 0, 46.0f, kTitleBarH};

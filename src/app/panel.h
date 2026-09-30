@@ -12,6 +12,7 @@
 #include "core/mpv.h"
 #include "core/sync.h"
 #include "ui/controls.h"
+#include "debug.h"
 #include "ui/renderer.h"
 
 namespace sp::app {
@@ -34,15 +35,38 @@ class Panel {
   void shutdown();
 
   // called from the window procedure
+  // Is this client point (in physical pixels, as the window sees it) a drag handle? The
+  // panel answers because it owns the title bar and button rects in design units, and knows the
+  // divisor they were laid out with. Points over a title-bar button are not drag handles.
+  bool wants_caption(int client_x, int client_y) const {
+    const float s = (input_scale_ > 0.0f) ? input_scale_ : 1.0f;
+    const float dx = static_cast<float>(client_x) / s;
+    const float dy = static_cast<float>(client_y) / s;
+    if (!title_bar_.contains(dx, dy)) return false;
+    if (btn_settings_.contains(dx, dy)) return false;
+    if (btn_min_.contains(dx, dy)) return false;
+    if (btn_close_.contains(dx, dy)) return false;
+    return true;
+  }
+
   void on_input(const ui::InputState& in) {
     in_ = in;
-    // Mouse messages carry physical pixels, but every rect here is in design units: this is
-    // the same divisor Panel::layout is given (design_w/design_h). Without it the hit test
-    // compares pixels against DIPs, so on a scaled display every control answers a click
-    // somewhere other than where it is drawn - a 150% screen is out by half the width.
-    const float s = (scale_dpi_ * scale_ > 0.0f) ? (scale_dpi_ * scale_) : 1.0f;
+    // Mouse messages carry physical pixels, but every rect here is in design units. The
+    // divisor is the one the layout recorded when it placed those rects (input_scale_),
+    // deliberately not recomputed here: if scale_dpi_ or scale_ changes between the layout and
+    // the next mouse message, recomputing would put the pointer in a different space from the
+    // rects, which shows up as controls that do not answer where they are drawn.
+    const float s = (input_scale_ > 0.0f) ? input_scale_ : 1.0f;
     in_.mouse_x = in.mouse_x / s;
     in_.mouse_y = in.mouse_y / s;
+    if (sp::app::debug_on()) {
+      sp::app::dbg("raw", static_cast<long>(in.mouse_x), static_cast<long>(in.mouse_y));
+      sp::app::dbg("dip", static_cast<long>(in_.mouse_x), static_cast<long>(in_.mouse_y));
+      sp::app::dbg("scale", static_cast<long>(scale_dpi_ * 1000.0f),
+                   static_cast<long>(scale_ * 1000.0f));
+      sp::app::dbg("iscale", static_cast<long>(input_scale_ * 1000.0f),
+                   static_cast<long>(design_w()));
+    }
   }
   void on_resize(float w, float h);
   // Design units are device-independent pixels: the client size divided by the display
@@ -235,6 +259,9 @@ class Panel {
   float width_ = 880.0f, height_ = 780.0f;
   float dpi_ = 96.0f;
   float scale_ = 1.0f;  // design units -> pixels
+  // The divisor the last layout pass used. The mouse is converted with this, never with a
+  // freshly computed one, so the pointer and the rects can never disagree.
+  float input_scale_ = 1.0f;
   float scale_dpi_ = 1.0f;  // logical -> physical pixels for this display
 
   // repaint bookkeeping
