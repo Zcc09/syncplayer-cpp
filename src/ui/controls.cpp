@@ -1,4 +1,5 @@
 #include "ui/controls.h"
+#include "app/debug.h"   // gated SP_UI_DEBUG logging
 
 #include <algorithm>
 #include <cmath>
@@ -52,7 +53,13 @@ void Controls::begin_frame(Renderer& r, const InputState& in) {
 }
 
 void Controls::end_frame() {
-  if (!in_.mouse_down) active_ = 0;
+  // Gated trace of the input path: the mouse position in design units plus the id of the
+  // control it is over (hot_ is set by each control while hovered). Active only when
+  // SP_UI_DEBUG is set, so a shipped build writes nothing.
+  if (sp::app::debug_on()) {
+    sp::app::dbg("mouse", static_cast<long>(in_.mouse_x), static_cast<long>(in_.mouse_y));
+    sp::app::dbg("hover", static_cast<long>(hot_), 0);
+  }
 }
 
 bool Controls::hit(const RectF& r) const {

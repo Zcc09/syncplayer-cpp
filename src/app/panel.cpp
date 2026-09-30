@@ -417,12 +417,15 @@ float Panel::build_videos(float x, float y, float w) {
 
   const float field_w = std::max(150.0f, std::min(420.0f, (inner - ui::kGap) * 0.5f));
   const float field_h = kLabelH + kRowGap + kFieldH;
+  // The button is measured against its own caption (drawn at 14pt, centred, with room
+  // for hover), so "Browse…" can never be clipped by its box.
+  const float browse_w = std::max(48.0f, renderer_.measure(L"Browse\u2026", 14.0f) + 24.0f);
   SourceRow* fields[2] = {&src_row_[0], &src_row_[1]};
   for (SourceRow* fld : fields) {
     const ui::RectF it = f.place(field_w, field_h);
     fld->label = {it.x, it.y, it.w, kLabelH};
-    fld->field = {it.x, it.y + kLabelH + kRowGap, std::max(60.0f, it.w - 40.0f), kFieldH};
-    fld->browse = {it.x + it.w - 36.0f, it.y + kLabelH + kRowGap, 36.0f, kFieldH};
+    fld->browse = {it.x + it.w - browse_w, it.y + kLabelH + kRowGap, browse_w, kFieldH};
+    fld->field = {it.x, it.y + kLabelH + kRowGap, std::max(60.0f, it.w - browse_w - ui::kGap), kFieldH};
   }
 
   src_hint_ = f.place(inner, 40.0f);

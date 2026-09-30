@@ -34,7 +34,16 @@ class Panel {
   void shutdown();
 
   // called from the window procedure
-  void on_input(const ui::InputState& in) { in_ = in; }
+  void on_input(const ui::InputState& in) {
+    in_ = in;
+    // Mouse messages carry physical pixels, but every rect here is in design units: this is
+    // the same divisor Panel::layout is given (design_w/design_h). Without it the hit test
+    // compares pixels against DIPs, so on a scaled display every control answers a click
+    // somewhere other than where it is drawn - a 150% screen is out by half the width.
+    const float s = (scale_dpi_ * scale_ > 0.0f) ? (scale_dpi_ * scale_) : 1.0f;
+    in_.mouse_x = in.mouse_x / s;
+    in_.mouse_y = in.mouse_y / s;
+  }
   void on_resize(float w, float h);
   // Design units are device-independent pixels: the client size divided by the display
   // scale, so the interface keeps its proportions on a scaled display.
