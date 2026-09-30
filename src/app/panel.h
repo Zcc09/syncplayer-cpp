@@ -83,10 +83,12 @@ class Panel {
   };
   struct TimelineRow {
     ui::RectF label, bar, time;
+    ui::RectF play;  // the per-video play/pause button (rows 0 and 1 only)
   };
 
   // ---- actions -------------------------------------------------------------
   void seek_side(Side side, double seconds);
+  void toggle_play_side(Side side);
   void seek_master(double seconds);
   void apply_offset_from_field();
   void apply_speed_from_field();

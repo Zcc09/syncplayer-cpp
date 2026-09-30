@@ -66,6 +66,7 @@ enum Id {
   ID_START,
   ID_SYNC_PLAY, ID_BACK, ID_FWD, ID_JUMP, ID_SPEED, ID_LOCK,
   ID_BAR_MOVIE, ID_BAR_REACTION, ID_BAR_MASTER, ID_GOTO, ID_OFFSET,
+  ID_PLAY_MOVIE, ID_PLAY_REACTION,
   ID_ARRANGE, ID_PIP,
   ID_VOL_A, ID_VOL_B, ID_VOL_M,
   ID_DARK, ID_READOUT, ID_TABS,
@@ -456,20 +457,28 @@ float Panel::build_timelines(float x, float y, float w, float min_h) {
   const float inner = std::max(80.0f, w - 2 * ui::kPad);
   const float lw = std::min(58.0f, inner * 0.3f);
   const float tw = 92.0f;
+  const float pb = 26.0f;  // the per-video play/pause button takes this off the bar
   float cy = y + kCardTop + kCardTitleH + 8.0f;
 
   for (int i = 0; i < 3; ++i) {
     const float beside = inner - lw - tw - ui::kGap;
-    if (beside >= 110.0f) {
+    const float bar_avail = (i < 2) ? beside - pb - ui::kGap : beside;
+    if (bar_avail >= 110.0f) {
       tl_[i].label = {x + ui::kPad, cy, lw, kLabelH};
-      tl_[i].bar = {x + ui::kPad + lw, cy + 2.0f, beside, 20.0f};
+      tl_[i].bar = {x + ui::kPad + lw, cy + 2.0f, bar_avail, 20.0f};
+      if (i < 2) {
+        tl_[i].play = {x + ui::kPad + lw + bar_avail + ui::kGap, cy, pb, 24.0f};
+      }
       tl_[i].time = {x + ui::kPad + lw + beside + ui::kGap, cy - 1.0f, tw, kLabelH + 2.0f};
       cy += 38.0f;
     } else {
       // no room for the readout beside the bar: it goes underneath
-      const float bar_w = std::max(60.0f, inner - lw);
+      const float bar_w = std::max(60.0f, inner - lw - ((i < 2) ? pb + ui::kGap : 0.0f));
       tl_[i].label = {x + ui::kPad, cy, lw, kLabelH};
       tl_[i].bar = {x + ui::kPad + lw, cy + 2.0f, bar_w, 20.0f};
+      if (i < 2) {
+        tl_[i].play = {x + ui::kPad + lw + bar_w + ui::kGap, cy, pb, 24.0f};
+      }
       tl_[i].time = {x + ui::kPad + lw, cy + 26.0f, bar_w, kLabelH};
       cy += 50.0f;
     }
@@ -905,6 +914,21 @@ void Panel::draw_sync_tab() {
 
   row(0, ID_BAR_MOVIE, L"Movie", pos_a, dur_a, Side::Movie);
   row(1, ID_BAR_REACTION, L"Reaction", pos_b, dur_b, Side::Reaction);
+
+  // per-video play/pause: locked means the pair moves together, unlocked means
+  // each button flips its own side only
+  const bool playing_movie = locked_ ? playing_ : !movie_.paused();
+  const bool playing_reaction = locked_ ? playing_ : !reaction_.paused();
+  const ui::Color pb_tint = have ? t.text : t.text_disabled;
+  const wchar_t* const pb_glyph[2] = {L"\u25B6", L"\u23F8"};  // play, pause
+  if (ui_.icon_button(ID_PLAY_MOVIE, tl_[0].play, pb_glyph[playing_movie],
+                      pb_tint)) {
+    toggle_play_side(Side::Movie);
+  }
+  if (ui_.icon_button(ID_PLAY_REACTION, tl_[1].play, pb_glyph[playing_reaction],
+                      pb_tint)) {
+    toggle_play_side(Side::Reaction);
+  }
 
   // the master bar drives both, keeping the offset
   renderer_.text(L"Master", tl_[2].label, have ? t.text : t.text_disabled, 13.0f,

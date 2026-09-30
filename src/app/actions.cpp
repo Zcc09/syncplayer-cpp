@@ -156,6 +156,23 @@ void Panel::toggle_play() {
                           : L"Paused.";
 }
 
+void Panel::toggle_play_side(Side side) {
+  if (!started_) return;
+  if (locked_) {
+    // locked: the pair moves together, exactly like the big Play button
+    toggle_play();
+    return;
+  }
+  MpvProcess* p = (side == Side::Movie) ? &movie_ : &reaction_;
+  // play_pause() takes the pause property, so a paused player is asked to play and vice versa.
+  const bool was_paused = p->paused();
+  p->play_pause(!was_paused);
+  dirty_ = true;
+  update_timer();
+  status_text_ = was_paused ? L"Playing that video; the other keeps its own state."
+                            : L"Paused that video; the other keeps its own state.";
+}
+
 void Panel::seek_side(Side side, double seconds) {
   if (!started_) return;
   const double target = std::max(0.0, seconds);
