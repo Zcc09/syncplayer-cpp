@@ -395,6 +395,14 @@ struct Flow {
     x = x0; y = y0; line_h = 0.0f; bottom = y0;
   }
 
+  // Start a new line deliberately, for a group that reads as rows rather than as one long run
+  // of items that happens to wrap wherever it runs out of room.
+  void break_line() {
+    y += line_h + gap;
+    x = x0;
+    line_h = 0.0f;
+  }
+
   ui::RectF place(float w, float h) {
     if (w > max_w) w = std::max(max_w, 1.0f);
     if (x > x0 && x + w > x0 + max_w) {  // no room on this line
@@ -454,6 +462,10 @@ float Panel::build_playback(float x, float y, float w) {
   btn_sync_play_ = place_control(150.0f);
   btn_back_ = place_control(96.0f);
   btn_fwd_ = place_control(96.0f);
+
+  // The settings row is its own line: sharing one with the transport made a single ragged row
+  // of six boxes with captions over only some of them.
+  f.break_line();
 
   const ui::RectF jit = f.place(120.0f, labelled);
   field_jump_ = {jit.x, jit.y + kLabelH + kRowGap, jit.w, kFieldH};
@@ -917,7 +929,13 @@ void Panel::draw_sync_tab() {
       ui::FieldResult::Submitted) {
     apply_speed_from_field();
   }
-  if (ui_.toggle(ID_LOCK, toggle_lock_, locked_, L"Lock sync to the master bar")) {
+  // The caption on the label line, like the Jump and Speed fields beside it. Passing it to
+  // the toggle would draw it inside the control's rect, at input height rather than caption
+  // height, which is what made this row look unaligned.
+  renderer_.text(L"Lock sync to the master bar",
+                 {toggle_lock_.x, toggle_lock_.y - kLabelH - kRowGap, toggle_lock_.w, kLabelH},
+                 t.text_secondary, 12.0f);
+  if (ui_.toggle(ID_LOCK, toggle_lock_, locked_, L"")) {
     set_message(locked_ ? L"Sync locked: the Master bar drives both videos."
                         : L"Sync unlocked: align with the per-video bars.");
   }

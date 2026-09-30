@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="SyncPlayer.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- A group card. It lives here because a WinUI 3 Window is not a FrameworkElement
+                 and has no Resources of its own, so the window's markup cannot define it. -->
+            <Style x:Key="CardStyle" TargetType="Border">
+                <Setter Property="Background"
+                        Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush"
+                        Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="16,12,16,16" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

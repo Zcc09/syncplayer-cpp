@@ -1,0 +1,80 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\Zcc09\\syncplayer-cpp\\winui\\SyncPlayer.vcxproj": {}
+  },
+  "projects": {
+    "C:\\Users\\Zcc09\\syncplayer-cpp\\winui\\SyncPlayer.vcxproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\Zcc09\\syncplayer-cpp\\winui\\SyncPlayer.vcxproj",
+        "projectName": "SyncPlayer",
+        "projectPath": "C:\\Users\\Zcc09\\syncplayer-cpp\\winui\\SyncPlayer.vcxproj",
+        "packagesPath": "C:\\Users\\Zcc09\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Zcc09\\syncplayer-cpp\\winui\\obj\\",
+        "projectStyle": "PackageReference",
+        "skipContentFileWrite": true,
+        "UsingMicrosoftNETSdk": false,
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\Zcc09\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "native"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "native": {
+            "framework": "native",
+            "projectReferences": {}
+          }
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "native": {
+          "framework": "native",
+          "dependencies": {
+            "Microsoft.Windows.CppWinRT": {
+              "target": "Package",
+              "version": "[3.0.260818.1, )"
+            },
+            "Microsoft.Windows.SDK.BuildTools": {
+              "target": "Package",
+              "version": "[10.0.26100.9169, )"
+            },
+            "Microsoft.WindowsAppSDK": {
+              "target": "Package",
+              "version": "[1.8.260921001, )"
+            }
+          }
+        }
+      },
+      "runtimes": {
+        "win": {
+          "#import": []
+        },
+        "win-arm64": {
+          "#import": []
+        },
+        "win-x64": {
+          "#import": []
+        },
+        "win-x86": {
+          "#import": []
+        }
+      }
+    }
+  }
+}
