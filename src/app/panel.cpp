@@ -438,19 +438,26 @@ float Panel::build_playback(float x, float y, float w) {
   Flow f;
   f.begin(x + ui::kPad, y + kCardTop + kCardTitleH + 8.0f, inner, ui::kGap);
 
-  btn_start_ = f.place(150.0f, kFieldH);
-  btn_sync_play_ = f.place(150.0f, kFieldH);
-  btn_back_ = f.place(96.0f, kFieldH);
-  btn_fwd_ = f.place(96.0f, kFieldH);
-
-  // labelled fields: the label is drawn above the field, so the item is as tall as both
+  // Every item on this line is as tall as a labelled field, with its control at the bottom
+  // of that height, so the buttons line up with the input boxes rather than sitting above
+  // them. The label row of a button is simply empty.
   const float labelled = kLabelH + kRowGap + kFieldH;
+  auto place_control = [&](float w) {
+    const ui::RectF it = f.place(w, labelled);
+    return ui::RectF{it.x, it.y + kLabelH + kRowGap, it.w, kFieldH};
+  };
+  btn_start_ = place_control(150.0f);
+  btn_sync_play_ = place_control(150.0f);
+  btn_back_ = place_control(96.0f);
+  btn_fwd_ = place_control(96.0f);
+
   const ui::RectF jit = f.place(120.0f, labelled);
   field_jump_ = {jit.x, jit.y + kLabelH + kRowGap, jit.w, kFieldH};
   const ui::RectF sit = f.place(120.0f, labelled);
   field_speed_ = {sit.x, sit.y + kLabelH + kRowGap, sit.w, kFieldH};
 
-  toggle_lock_ = f.place(std::min(260.0f, inner), kFieldH);
+  const ui::RectF lit = f.place(std::min(260.0f, inner), labelled);
+  toggle_lock_ = {lit.x, lit.y + kLabelH + kRowGap, lit.w, kFieldH};
 
   card_playback_ = {x, y, w, kCardTop + kCardTitleH + 8.0f + f.height() + 12.0f};
   return card_playback_.h;
@@ -460,41 +467,51 @@ float Panel::build_timelines(float x, float y, float w, float min_h) {
   const float inner = std::max(80.0f, w - 2 * ui::kPad);
   const float lw = std::min(58.0f, inner * 0.3f);
   const float tw = 92.0f;
-  const float pb = 26.0f;  // the per-video play/pause button takes this off the bar
+  const float pb = 26.0f;   // the per-video play/pause button takes this off the bar
+  const float goto_w = 170.0f;  // the Go to box, which lives on the Master row
   float cy = y + kCardTop + kCardTitleH + 8.0f;
 
   for (int i = 0; i < 3; ++i) {
+    const bool master = (i == 2);
+    // The Master row is taller: its Go to box carries a label, so the row's own bar, button
+    // and readout are placed on the same line as that box's input.
+    const float row_h = master ? (kLabelH + kRowGap + kFieldH + 8.0f) : 38.0f;
+    const float ctrl_y = master ? cy + kLabelH + kRowGap + (kFieldH - 20.0f) / 2.0f
+                                : cy + 2.0f;
     const float beside = inner - lw - tw - ui::kGap;
-    const float bar_avail = (i < 2) ? beside - pb - ui::kGap : beside;
+    const float taken = (i < 2 ? pb + ui::kGap : 0.0f) + (master ? goto_w + ui::kGap : 0.0f);
+    const float bar_avail = beside - taken;
+
     if (bar_avail >= 110.0f) {
       tl_[i].label = {x + ui::kPad, cy, lw, kLabelH};
-      tl_[i].bar = {x + ui::kPad + lw, cy + 2.0f, bar_avail, 20.0f};
+      tl_[i].bar = {x + ui::kPad + lw, ctrl_y, bar_avail, 20.0f};
       if (i < 2) {
-        tl_[i].play = {x + ui::kPad + lw + bar_avail + ui::kGap, cy, pb, 24.0f};
+        tl_[i].play = {x + ui::kPad + lw + bar_avail + ui::kGap, ctrl_y - 2.0f, pb, 24.0f};
       }
-      tl_[i].time = {x + ui::kPad + lw + beside + ui::kGap, cy - 1.0f, tw, kLabelH + 2.0f};
-      cy += 38.0f;
+      tl_[i].time = {x + ui::kPad + lw + beside + ui::kGap, ctrl_y, tw, kLabelH + 2.0f};
+      if (master) {
+        // next to the main timeline, sharing its row
+        field_goto_ = {x + ui::kPad + lw + beside + ui::kGap + tw + ui::kGap,
+                       cy + kLabelH + kRowGap, goto_w, kFieldH};
+      }
+      cy += row_h;
     } else {
-      // no room for the readout beside the bar: it goes underneath
-      const float bar_w = std::max(60.0f, inner - lw - ((i < 2) ? pb + ui::kGap : 0.0f));
+      // no room beside the bar: the readout goes underneath
+      const float sub = x + ui::kPad + lw;
+      const float bar_w = std::max(60.0f, inner - lw - (i < 2 ? pb + ui::kGap : 0.0f));
       tl_[i].label = {x + ui::kPad, cy, lw, kLabelH};
-      tl_[i].bar = {x + ui::kPad + lw, cy + 2.0f, bar_w, 20.0f};
+      tl_[i].bar = {sub, ctrl_y, bar_w, 20.0f};
       if (i < 2) {
-        tl_[i].play = {x + ui::kPad + lw + bar_w + ui::kGap, cy, pb, 24.0f};
+        tl_[i].play = {sub + bar_w + ui::kGap, ctrl_y - 2.0f, pb, 24.0f};
       }
-      tl_[i].time = {x + ui::kPad + lw, cy + 26.0f, bar_w, kLabelH};
-      cy += 50.0f;
+      tl_[i].time = {sub, ctrl_y + 26.0f, bar_w, kLabelH};
+      if (master) {
+        field_goto_ = {sub, tl_[i].time.y + kLabelH + kRowGap, std::min(goto_w, inner), kFieldH};
+      }
+      cy += row_h + 12.0f;
     }
   }
-
   cy += 6.0f;
-  field_goto_ = {x + ui::kPad, cy + kLabelH + kRowGap, std::min(220.0f, inner), kFieldH};
-  cy += kLabelH + kRowGap + kFieldH + 12.0f;
-
-  // the offset field, then its readout on the line below, so neither can cover the other
-  field_offset_ = {x + ui::kPad, cy + kLabelH + kRowGap, std::min(200.0f, inner), kFieldH};
-  lbl_offset_ = {x + ui::kPad, field_offset_.y + kFieldH + 6.0f, inner, kLabelH};
-  cy = lbl_offset_.y + kLabelH + 12.0f;
 
   const float needed = cy - y;
   card_timelines_ = {x, y, w, std::max(needed, min_h)};
@@ -557,6 +574,14 @@ float Panel::build_settings_groups(float x, float y, float w, bool with_about) {
     cy += cards[i]->h + ui::kGap;
   }
 
+  // sync: the typed offset and what it currently is, moved out of the timelines group
+  card_sync_ = {x, cy, w, kCardTop + kCardTitleH + 8.0f + kLabelH + kRowGap + kFieldH +
+                            6.0f + kLabelH + 12.0f};
+  field_offset_ = {x + ui::kPad, card_sync_.y + kCardTop + kCardTitleH + 8.0f + kLabelH +
+                                  kRowGap, std::min(200.0f, inner), kFieldH};
+  lbl_offset_ = {x + ui::kPad, field_offset_.y + kFieldH + 6.0f, inner, kLabelH};
+  cy += card_sync_.h + ui::kGap;
+
   if (with_about) {
     card_about_ = {x, cy, w, kCardTop + kCardTitleH + 8.0f + 3 * 24.0f + 12.0f};
     cy += card_about_.h;
@@ -574,7 +599,7 @@ void Panel::layout_stacked(const ui::RectF& c, float scroll) {
   y += build_volume(c.x, y, c.w) + ui::kGap;
   y += build_windows(c.x, y, c.w, false);
   // appearance, the status bar, the arrangement and about live on the settings page
-  card_appearance_ = card_status_ = card_tabs_ = card_about_ = {};
+  card_appearance_ = card_status_ = card_tabs_ = card_about_ = card_sync_ = {};
   content_h_ = y + scroll - c.y;
 }
 
@@ -590,7 +615,7 @@ void Panel::layout_sync(const ui::RectF& c) {
   const float ty = c.y + ph + ui::kGap;
   // the timelines card fills what is left, but never less than its contents need
   build_timelines(c.x, ty, c.w, std::max(0.0f, c.h - ph - ui::kGap));
-  card_videos_ = card_volume_ = card_windows_ = card_shortcuts_ = {};
+  card_videos_ = card_volume_ = card_windows_ = card_shortcuts_ = card_sync_ = {};
 }
 
 void Panel::layout_windows(const ui::RectF& c) {
@@ -967,17 +992,6 @@ void Panel::draw_sync_tab() {
   }
 
   // the offset belongs to the timelines group, so it is drawn above, in that card
-  renderer_.text(L"Offset",
-                 {field_offset_.x, field_offset_.y - kLabelH - kRowGap, field_offset_.w,
-                  kLabelH},
-                 t.text_secondary, 12.0f);
-  if (ui_.text_field(ID_OFFSET, field_offset_, offset_text_, L"12.5 / 1:05 / -3.25",
-                     true) == ui::FieldResult::Submitted) {
-    apply_offset_from_field();
-  }
-  if (lbl_offset_.h > 0.0f) {
-    renderer_.text(offset_label(), lbl_offset_, t.text_secondary, 12.0f);
-  }
 }
 
 void Panel::draw_windows_tab() {
@@ -1050,6 +1064,21 @@ void Panel::draw_settings_tab() {
       dirty_ = true;
       set_message(tabs_mode_ ? L"Groups split into tabs."
                              : L"One column, like the Python build.");
+    }
+  }
+
+  if (card_sync_.h > 0.0f) {
+    ui_.card(card_sync_, L"SYNC");
+    renderer_.text(L"Offset",
+                   {field_offset_.x, field_offset_.y - kLabelH - kRowGap, field_offset_.w,
+                    kLabelH},
+                   t.text_secondary, 12.0f);
+    if (ui_.text_field(ID_OFFSET, field_offset_, offset_text_, L"12.5 / 1:05 / -3.25",
+                       true) == ui::FieldResult::Submitted) {
+      apply_offset_from_field();
+    }
+    if (lbl_offset_.h > 0.0f) {
+      renderer_.text(offset_label(), lbl_offset_, t.text_secondary, 12.0f);
     }
   }
 
