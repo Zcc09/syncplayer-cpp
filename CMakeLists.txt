@@ -61,7 +61,9 @@ if(WIN32 AND SP_BUILD_APP)
     src/ui/renderer.cpp
     src/ui/theme.cpp
     src/ui/controls.cpp
-  )
+  
+  assets/syncplayer.rc   # the application icon
+)
   target_link_libraries(SyncPlayer PRIVATE sp_core d2d1 dwrite)
   set_target_properties(SyncPlayer PROPERTIES
     OUTPUT_NAME "SyncPlayer"

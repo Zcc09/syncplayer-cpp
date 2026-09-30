@@ -1,0 +1,4 @@
+// The application icon. Resource id 1 is the one Windows uses for the executable
+// itself, so the taskbar, alt-tab and the desktop shortcut all show the same mark as
+// the Python build.
+1 ICON "syncplayer.ico"
