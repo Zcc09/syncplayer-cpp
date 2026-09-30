@@ -193,6 +193,7 @@ class Panel {
 
   // sync
   ui::RectF card_playback_, card_timelines_, card_sync_;
+  ui::RectF btn_max_;
   ui::RectF btn_sync_play_, btn_back_, btn_fwd_, field_jump_, field_speed_, toggle_lock_;
   TimelineRow tl_[3];
   ui::RectF field_goto_, field_offset_, lbl_offset_;

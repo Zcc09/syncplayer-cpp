@@ -37,6 +37,11 @@ std::unique_ptr<sp::app::Panel> g_panel;
 sp::ui::InputState g_input;
 bool g_tracking_leave = false;
 
+// The designed window, in logical pixels: wide enough for the two video fields and the
+// playback row side by side, tall enough that the stacked column is not fit-scaled.
+constexpr int kDefaultW = 900;
+constexpr int kDefaultH = 820;
+
 // The panel's minimum, converted to physical pixels for this window's DPI: at 150%
 // scaling the same design needs 1.5x the pixels, otherwise the panel would scale itself
 // down on a high-DPI screen and the type would come out smaller than the design.
@@ -50,8 +55,12 @@ int min_height_for(HWND hwnd) {
   const UINT dpi = hwnd ? GetDpiForWindow(hwnd) : 96;
   const float s = (dpi ? static_cast<float>(dpi) : 96.0f) / 96.0f;
   // A stacked column scrolls and needs much less room than a tabbed one.
-  const int design = g_panel ? g_panel->min_height()
-                             : static_cast<int>(sp::app::Panel::kMinHeight);
+  // Floored at the design minimum: the panel's own minimum shrinks with its fit factor, so a
+  // small window produced a small minimum, which kept the window small. At 150% this is 840
+  // physical pixels, which is where the interface stops being scaled below its design.
+  const int panel_min = g_panel ? g_panel->min_height()
+                                : static_cast<int>(sp::app::Panel::kMinHeight);
+  const int design = std::max(panel_min, static_cast<int>(sp::app::Panel::kMinHeight));
   return static_cast<int>(design * s);
 }
 
@@ -335,8 +344,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
   // The config is in logical pixels; scale it to this display's DPI.
   const UINT dpi = GetDpiForSystem();
   const float dpi_scale = (dpi ? static_cast<float>(dpi) : 96.0f) / 96.0f;
-  int w = cfg.window.valid() ? static_cast<int>(cfg.window.w * dpi_scale) : 880;
-  int h = cfg.window.valid() ? static_cast<int>(cfg.window.h * dpi_scale) : 780;
+  // The default is the designed size, so a fresh window shows the whole interface at its
+  // intended scale rather than fit-scaled and cramped.
+  // Both paths go through dpi_scale: the config stores logical pixels, so the default must be
+  // expressed in the same units or the window comes out at the design size in pixels rather
+  // than in logical units, which is 1.5x too small on this display.
+  int w = static_cast<int>((cfg.window.valid() ? cfg.window.w : kDefaultW) * dpi_scale);
+  int h = static_cast<int>((cfg.window.valid() ? cfg.window.h : kDefaultH) * dpi_scale);
   if (!cfg.window.valid()) {
     const int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
     x = (sw - w) / 2;

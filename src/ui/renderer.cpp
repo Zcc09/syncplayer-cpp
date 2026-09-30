@@ -95,7 +95,11 @@ void Renderer::begin() {
     // still draw: the window may be partially covered, and a stale frame is worse
   }
   target_->BeginDraw();
-  target_->SetTransform(D2D1::Matrix3x2F::Identity());
+  // The fit scale, applied here every frame. Set once in set_scale() it was being wiped by the
+  // Identity() transform this line used to set, so the panel laid out and hit-tested with one
+  // scale while drawing with another - 7.7% out, which cut the right and bottom edges off and
+  // put every click away from the control it was aimed at.
+  target_->SetTransform(D2D1::Matrix3x2F::Scale(scale_, scale_));
   target_->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
   target_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
 }

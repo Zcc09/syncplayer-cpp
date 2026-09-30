@@ -70,7 +70,7 @@ enum Id {
   ID_ARRANGE, ID_PIP,
   ID_VOL_A, ID_VOL_B, ID_VOL_M,
   ID_DARK, ID_READOUT, ID_TABS,
-  ID_SETTINGS, ID_MIN, ID_CLOSE,
+  ID_SETTINGS, ID_MIN, ID_MAX, ID_CLOSE,
 };
 
 const wchar_t* const kTabNames[kTabCount] = {L"Sources", L"Sync", L"Windows",
@@ -325,8 +325,10 @@ void Panel::layout(float w, float h) {
   // Remember the divisor used to place the rects, so the mouse is converted with the same one.
   input_scale_ = scale_dpi_ * scale_;
   title_bar_ = {0, 0, w, kTitleBarH};
+  // Windows order, left to right: minimize, maximize, close.
   btn_close_ = {w - 46.0f, 0, 46.0f, kTitleBarH};
-  btn_min_ = {w - 92.0f, 0, 46.0f, kTitleBarH};
+  btn_max_ = {w - 92.0f, 0, 46.0f, kTitleBarH};
+  btn_min_ = {w - 138.0f, 0, 46.0f, kTitleBarH};
   tab_strip_ = {0, kTitleBarH, w, kTabStripH};
 
   // the status strip is pinned to the bottom in both arrangements
@@ -737,6 +739,10 @@ void Panel::draw_title_bar() {
 
   if (ui_.icon_button(ID_MIN, btn_min_, L"\u2500", t.text)) {
     ShowWindow(hwnd_, SW_MINIMIZE);
+  }
+  const bool zoomed = IsZoomed(hwnd_) != FALSE;
+  if (ui_.icon_button(ID_MAX, btn_max_, zoomed ? L"\u2750" : L"\u25A1", t.text)) {
+    ShowWindow(hwnd_, zoomed ? SW_RESTORE : SW_MAXIMIZE);
   }
   if (ui_.icon_button(ID_CLOSE, btn_close_, L"\u2715", t.text)) {
     PostMessageW(hwnd_, WM_CLOSE, 0, 0);
