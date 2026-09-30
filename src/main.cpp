@@ -42,6 +42,27 @@ bool g_tracking_leave = false;
 constexpr int kDefaultW = 900;
 constexpr int kDefaultH = 820;
 
+// Fits a window rect inside its monitor's work area, shrinking the size if it cannot fit and
+// recentring the position. The work area excludes the taskbar and is the monitor the window is
+// actually on - GetSystemMetrics(SM_CXSCREEN) is the primary monitor only, which is the wrong
+// rectangle as soon as there is a second screen.
+void clamp_to_work_area(HWND hwnd, int& x, int& y, int& w, int& h) {
+  MONITORINFO mi{};
+  mi.cbSize = sizeof(mi);
+  const HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+  if (!mon || !GetMonitorInfoW(mon, &mi)) return;
+  const int avail_w = mi.rcWork.right - mi.rcWork.left;
+  const int avail_h = mi.rcWork.bottom - mi.rcWork.top;
+  if (w > avail_w) w = avail_w;
+  if (h > avail_h) h = avail_h;
+  if (x < mi.rcWork.left || x + w > mi.rcWork.right) {
+    x = mi.rcWork.left + std::max(0, (avail_w - w) / 2);
+  }
+  if (y < mi.rcWork.top || y + h > mi.rcWork.bottom) {
+    y = mi.rcWork.top + std::max(0, (avail_h - h) / 2);
+  }
+}
+
 // The panel's minimum, converted to physical pixels for this window's DPI: at 150%
 // scaling the same design needs 1.5x the pixels, otherwise the panel would scale itself
 // down on a high-DPI screen and the type would come out smaller than the design.
@@ -153,12 +174,15 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       const UINT dpi = HIWORD(wp);
       if (g_panel) g_panel->on_dpi(static_cast<float>(dpi));
       const RECT* suggested = reinterpret_cast<const RECT*>(lp);
-      const int sw = std::max(static_cast<int>(suggested->right - suggested->left),
-                              min_width_for(hwnd));
-      const int sh = std::max(static_cast<int>(suggested->bottom - suggested->top),
-                              min_height_for(hwnd));
-      SetWindowPos(hwnd, nullptr, suggested->left, suggested->top, sw, sh,
-                   SWP_NOZORDER | SWP_NOACTIVATE);
+      // The suggested rect can sit off the screen, and taking it unconditionally used to undo
+      // whatever the startup sizing decided. It goes through the same clamp.
+      int sx = suggested->left, sy = suggested->top;
+      int sw = std::max(static_cast<int>(suggested->right - suggested->left),
+                        min_width_for(hwnd));
+      int sh = std::max(static_cast<int>(suggested->bottom - suggested->top),
+                        min_height_for(hwnd));
+      clamp_to_work_area(hwnd, sx, sy, sw, sh);
+      SetWindowPos(hwnd, nullptr, sx, sy, sw, sh, SWP_NOZORDER | SWP_NOACTIVATE);
       InvalidateRect(hwnd, nullptr, FALSE);
       return 0;
     }
@@ -375,14 +399,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
   // No tab is ever clipped: the window cannot be smaller than the panel's own minimum,
   // and it opens at a size that shows every tab comfortably.
   {
-    const int screen_w = GetSystemMetrics(SM_CXSCREEN);
-    const int screen_h = GetSystemMetrics(SM_CYSCREEN);
     const int min_w = min_width_for(hwnd);
     const int min_h = min_height_for(hwnd);
-    if (w < min_w) w = std::min(min_w, screen_w - 40);
-    if (h < min_h) h = std::min(min_h, screen_h - 60);
-    if (x + w > screen_w) x = std::max(0, screen_w - w - 20);
-    if (y + h > screen_h) y = std::max(0, screen_h - h - 40);
+    if (w < min_w) w = min_w;
+    if (h < min_h) h = min_h;
+    clamp_to_work_area(hwnd, x, y, w, h);
     SetWindowPos(hwnd, nullptr, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
   }
 
